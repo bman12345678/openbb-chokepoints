@@ -42,7 +42,38 @@ The REST API is served by `openbb-api` (from `openbb-platform-api`) at
 
 ## Commands
 
-No commands have been merged yet.
+### `obb.chokepoints.event_study`
+
+Market-model event study (MacKinlay 1997; Campbell, Lo & MacKinlay 1997,
+ch. 4). For each symbol it fits `R_i = alpha + beta * R_m` by OLS over the
+estimation window, then measures abnormal returns `AR = R_i - (alpha + beta * R_m)`
+around a date you supply. It reports cumulative abnormal returns (CAR) with
+t-tests that include the estimation error in alpha and beta.
+
+| Parameter | Default | Meaning |
+|---|---|---|
+| `symbols` | required | List of tickers, or a comma-separated string |
+| `event_date` | required | Day 0 is each symbol's first trading day on or after this date |
+| `market_symbol` | `"SPY"` | Market index. For non-US stocks use the local index (e.g. `^OMXC25`, `^N225`) |
+| `estimation_window` | `(-250, -30)` | Trading days relative to day 0 used to fit the model |
+| `event_window` | `(-5, 20)` | Trading days relative to day 0 for abnormal returns |
+| `min_estimation_obs` | `120` | Symbols with fewer estimation days are skipped with a warning |
+
+Output: one row per symbol and CAR window (the full event window, plus
+`(-1, 1)`, `(0, 5)` and `(0, 20)` when they fit inside it), with `car`,
+`car_t`, `p_value`, `alpha`, `beta`, `sigma_eps`, `n_est`, `day0` and the
+daily `ar_by_day`. Returns are decimals (0.05 = 5%). Prices come from Yahoo
+Finance, adjusted for splits and dividends, and are never forward-filled.
+
+```python
+from openbb import obb
+
+res = obb.chokepoints.event_study(symbols=["ZIM", "FRO"], event_date="2023-12-15")
+res.to_df()[["symbol", "window", "car", "car_t", "p_value"]]
+```
+
+REST: `GET /api/v1/chokepoints/event_study?symbols=ZIM,FRO&event_date=2023-12-15`.
+Pass a window as repeated parameters: `&event_window=-2&event_window=10`.
 
 ## Project layout
 
