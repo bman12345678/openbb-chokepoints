@@ -29,23 +29,23 @@ import numpy as np
 import pandas as pd
 from scipy.stats import norm
 
-Window = tuple[int, int]
-
+Window = tuple[int, int] # represents inclusive relative day offsets (x days before event, y days after event)
+#global defaults, subject to change
 DEFAULT_ESTIMATION_WINDOW: Window = (-250, -30)
 DEFAULT_EVENT_WINDOW: Window = (-5, 20)
 DEFAULT_MIN_ESTIMATION_OBS = 120
 DEFAULT_SUB_WINDOWS: tuple[Window, ...] = ((-1, 1), (0, 5), (0, 20))
 
-
+#subclass that notifies when asset is skipped because something due to not enough / wrong data 
 class EventStudyWarning(UserWarning):
     """A data problem that skipped a symbol or shortened its event window."""
 
-
+#helper function to convert integer window into string label
 def format_window(window: Window) -> str:
     """Label a window the way it is reported, e.g. ``"(-5, 20)"``."""
     return f"({window[0]}, {window[1]})"
 
-
+#function for fitting OLS regression over estimation window
 def fit_market_model(
     r_asset: pd.Series | np.ndarray, r_market: pd.Series | np.ndarray
 ) -> tuple[float, float, float, np.ndarray, int]:
@@ -60,15 +60,23 @@ def fit_market_model(
         sigma2 is the residual variance with L1 - 2 degrees of freedom and
         XtX_inv is the pseudo-inverse of X'X for X = [1, R_m].
     """
+   #helper to strip missing values
     y, x = _aligned_arrays(r_asset, r_market)
+   #checking degrees of freedom
     n_est = len(y)
     if n_est < 3:
         raise ValueError(f"Need at least 3 estimation observations, got {n_est}.")
-
+#constructing design matrix (row for each trading day, one column of 1s and one column of daily market return)
+#used to represent y = mx + b, (market's daily returns, asset's daily returns), m = stock's sensitivty to market
     X = np.column_stack([np.ones(n_est), x])
+   #solves the ordinary least squares equation to develop the linear model
     coef, *_ = np.linalg.lstsq(X, y, rcond=None)
+   #residual
     resid = y - X @ coef
+   #variance
     sigma2 = float(resid @ resid / (n_est - 2))
+   #computes inverse of transpose of X * X (Moore-Penrose pseudo-inverse to account for unsual data)
+   #covariance matrix needed for Abnormal Returns later on
     XtX_inv = np.linalg.pinv(X.T @ X)
     return float(coef[0]), float(coef[1]), sigma2, XtX_inv, n_est
 
@@ -80,6 +88,7 @@ def abnormal_returns(
 
     Days where the market return is missing give a missing AR.
     """
+   #a.k.a. observed - expected (residual for out of estimation window / points not in sample used to make model)
     rm = r_market.reindex(r_asset.index)
     return (r_asset - (alpha + beta * rm)).rename(r_asset.name)
 
@@ -104,13 +113,16 @@ def car_and_test(
     l2 = len(a)
     if l2 == 0:
         raise ValueError("CAR window has no observations.")
-
+   #cumulative abnormal returns
     car = float(a.sum())
+   #vector (2x1) cumulative weight of regressors on window
     g = np.array([l2, m.sum()])
     var = float(sigma2 * (l2 + g @ XtX_inv @ g))
     if not var > 0:
         return car, var, float("nan"), float("nan")
+   #t statistic
     t = car / np.sqrt(var)
+   #two tailed p value (abnormal reaction can be in either direction)
     p = float(2 * norm.sf(abs(t)))
     return car, var, float(t), p
 
