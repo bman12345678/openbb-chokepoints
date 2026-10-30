@@ -18,23 +18,36 @@ classifiers = [
 ]
 dependencies = [
     "openbb-core>=2.0,<3",
+    "openbb-economy>=2.0,<3",
     "openbb-equity>=2.0,<3",
     "openbb-yfinance>=2.0,<3",
+    "openbb-imf>=3.0,<4",
+    "openbb-famafrench>=2.0,<3",
     "pandas>=2.0",
     "numpy>=1.24",
     "scipy>=1.10",
+    "PyYAML>=6.0",
 ]
 
 [project.optional-dependencies]
 dev = [
     "pytest>=8",
-    "pytest-cov>=5",
+    "pytest-cov>=4.1,<5",
+    "pytest-recorder>=1.0",
     "ruff>=0.6",
     "statsmodels>=0.14",
+    "openbb-devtools>=2.0,<3",
+]
+charting = [
+    "openbb-charting>=4.0,<5",
+    "plotly>=5.0",
 ]
 
 [project.entry-points."openbb_core_extension"]
 chokepoints = "openbb_chokepoints.router:router"
+
+[project.entry-points."openbb_charting_extension"]
+chokepoints = "openbb_chokepoints.chokepoints_views:ChokepointsViews"
 
 [tool.setuptools.packages.find]
 include = ["openbb_chokepoints*"]
