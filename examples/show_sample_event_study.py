@@ -16,6 +16,7 @@ from openbb_chokepoints.chokepoints_views import ChokepointsViews
 
 
 def main() -> None:
+    """Render the fixture through the chart view into a standalone HTML file."""
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument(
         "--output",
@@ -25,6 +26,7 @@ def main() -> None:
     )
     args = parser.parse_args()
 
+    # The fixture mirrors EventStudyData rows and the command's event_window input.
     fixture_path = Path(__file__).with_name("event_study_sample.json")
     sample = json.loads(fixture_path.read_text(encoding="utf-8"))
     figure, _ = ChokepointsViews.chokepoints_event_study(

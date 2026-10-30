@@ -7,6 +7,7 @@ import pytest
 
 
 def test_event_study_chart_uses_full_window_rows_and_marks_day_zero():
+    """Check the chart behavior promised by the event-study chart work package."""
     pytest.importorskip("openbb_charting")
 
     from openbb_chokepoints.charts import event_study_chart

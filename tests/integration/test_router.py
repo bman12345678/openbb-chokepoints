@@ -10,6 +10,7 @@ def test_entry_point_registered():
 
 
 def test_charting_entry_point_registered():
+    """Check the optional chart-view class is registered with OpenBB."""
     eps = entry_points(group="openbb_charting_extension")
     ep = next(e for e in eps if e.name == "chokepoints")
     assert ep.value == "openbb_chokepoints.chokepoints_views:ChokepointsViews"
@@ -17,6 +18,7 @@ def test_charting_entry_point_registered():
 
 
 def test_openbb_data_command_dependencies_load():
+    """Check the provider extensions needed by planned commands are installed."""
     from openbb import obb
 
     assert callable(obb.economy.shipping.chokepoint_volume)

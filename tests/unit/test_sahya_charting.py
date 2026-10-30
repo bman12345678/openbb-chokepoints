@@ -1,4 +1,4 @@
-"""Sahya-owned chart wiring and sample presentation tests.
+"""Product/platform chart-wiring tests using the event-study result shape.
 
 These tests use the event-study result shape from the feature branch. They do
 not exercise the event-study calculations or fetch provider data.
@@ -16,6 +16,7 @@ SAMPLE_PATH = ROOT / "examples" / "event_study_sample.json"
 
 
 def test_sample_rows_match_event_study_branch_shape():
+    """Keep the sample fixture compatible with event-study result rows."""
     sample = json.loads(SAMPLE_PATH.read_text(encoding="utf-8"))
     required = {
         "symbol",
@@ -43,23 +44,29 @@ def test_sample_rows_match_event_study_branch_shape():
 
 
 def test_chart_view_wraps_figure_as_openbb_content(monkeypatch):
+    """Check the route-named view returns OpenBB's chart adapter contract."""
     pytest.importorskip("openbb_charting")
 
     from openbb_chokepoints import charts
     from openbb_chokepoints.chokepoints_views import ChokepointsViews
 
     class FakeFigure:
+        """Stand-in for OpenBBFigure while testing view serialization."""
+
         def show(self, *, external):
+            """Match the external serialization call used by OpenBB chart views."""
             assert external is True
             return self
 
         def to_json(self):
+            """Return the serialized figure payload expected by the adapter."""
             return '{"data": [], "layout": {}}'
 
     figure = FakeFigure()
     received = {}
 
     def fake_chart(rows, event_window, *, sample_mode, theme):
+        """Capture the chart inputs forwarded by the OpenBB view."""
         received.update(
             rows=rows,
             event_window=event_window,
@@ -89,6 +96,7 @@ def test_chart_view_wraps_figure_as_openbb_content(monkeypatch):
 
 
 def test_sample_renderer_writes_standalone_html(tmp_path):
+    """Verify the sample workflow produces a labeled, local HTML chart."""
     pytest.importorskip("openbb_charting")
     output = tmp_path / "nested" / "event-study.html"
     script = ROOT / "examples" / "show_sample_event_study.py"
@@ -109,13 +117,17 @@ def test_sample_renderer_writes_standalone_html(tmp_path):
 
 
 def test_chart_modules_import_without_optional_charting_dependency():
+    """Protect the plan's requirement that charting remains an optional extra."""
     # Simulate a minimal install even when this test environment has the extra.
-    code = """
+    code = '''
 import importlib.abc
 import sys
 
 class BlockCharting(importlib.abc.MetaPathFinder):
+    """Pretend the optional OpenBB charting package is not installed."""
+
     def find_spec(self, fullname, path=None, target=None):
+        """Block charting imports while leaving the base extension importable."""
         if fullname == 'openbb_charting' or fullname.startswith('openbb_charting.'):
             raise ModuleNotFoundError('blocked optional charting dependency')
         return None
@@ -124,7 +136,7 @@ sys.meta_path.insert(0, BlockCharting())
 import openbb_chokepoints.charts
 import openbb_chokepoints.chokepoints_views
 assert not any(name.startswith('openbb_charting') for name in sys.modules)
-"""
+'''
     subprocess.run(
         [sys.executable, "-c", code],
         cwd=ROOT,
@@ -135,6 +147,7 @@ assert not any(name.startswith('openbb_charting') for name in sys.modules)
 
 
 def test_charting_entrypoint_names_the_event_study_view():
+    """Check OpenBB can discover the route-named chart view from its entry point."""
     pytest.importorskip("openbb_charting")
 
     from importlib.metadata import entry_points

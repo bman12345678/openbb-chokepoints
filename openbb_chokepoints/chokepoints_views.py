@@ -8,11 +8,11 @@ optional ``charting`` extra.
 
 
 class ChokepointsViews:
-    """Chart views for chokepoint commands."""
+    """OpenBB chart hooks for routes, as specified by the charting plan."""
 
     @staticmethod
     def chokepoints_event_study(**kwargs):
-        """Plot cumulative abnormal returns for the full event window."""
+        """Adapt event-study result rows to OpenBB's figure/content pair."""
         import json
 
         from openbb_chokepoints.charts import event_study_chart

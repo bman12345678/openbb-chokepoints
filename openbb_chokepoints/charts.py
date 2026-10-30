@@ -1,7 +1,7 @@
-"""Chart builders for optional OpenBB chart views.
+"""Build the optional charts described in the product/platform plan.
 
-Plotly and OpenBB charting are imported only inside functions so the base
-extension can be installed without the optional ``charting`` extra.
+These views present event-study results; they do not fetch data or run the
+market-model calculations. Charting imports stay lazy so the extra is optional.
 """
 
 from __future__ import annotations
@@ -9,6 +9,7 @@ from __future__ import annotations
 from collections.abc import Mapping, Sequence
 from typing import Any
 
+# Reuse this palette across symbol traces in the event-study view.
 _COLORS = (
     "#2E86AB",
     "#F18F01",
@@ -28,12 +29,12 @@ def event_study_chart(
     sample_mode: bool = False,
     theme: str = "dark",
 ):
-    """Build a cumulative abnormal-return chart from event-study result rows.
+    """Plot the CAR path from the event-study command's result rows.
 
-    The rows follow ``EventStudyData`` from the event-study feature branch:
-    each row has ``symbol``, ``window`` and ``ar_by_day``. When the command
-    returns several CAR windows per symbol, only the full ``event_window`` row
-    is plotted. Values are decimals and are displayed as percentages.
+    ``ar_by_day`` follows the event-study result model. Summing abnormal
+    returns by day gives the CAR path (MacKinlay, 1997); values are decimals
+    and the chart displays percentages. Only the full requested window is
+    plotted when sub-window rows are also present.
     """
     from openbb_charting.core.openbb_figure import OpenBBFigure
 
@@ -119,6 +120,7 @@ def event_study_chart(
 
 
 def _as_record(row: Any) -> dict[str, Any]:
+    """Convert a result model or mapping to the chart's row format."""
     if isinstance(row, Mapping):
         return dict(row)
     if hasattr(row, "model_dump"):
@@ -127,10 +129,12 @@ def _as_record(row: Any) -> dict[str, Any]:
 
 
 def _window_label(window: tuple[int, int]) -> str:
+    """Format window bounds like the event-study output model does."""
     return f"({int(window[0])}, {int(window[1])})"
 
 
 def _cumulative_with_gaps(values: Sequence[Any]) -> list[float | None]:
+    """Accumulate daily abnormal returns while keeping missing days as gaps."""
     running = 0.0
     result: list[float | None] = []
     for value in values:
