@@ -22,6 +22,7 @@ dependencies = [
     "openbb-yfinance>=2.0,<3",
     "pandas>=2.0",
     "numpy>=1.24",
+    "pyarrow>=14",
     "scipy>=1.10",
 ]
 
