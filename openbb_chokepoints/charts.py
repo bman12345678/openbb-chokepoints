@@ -201,11 +201,7 @@ def _finite_nonnegative(value: Any) -> float | None:
         number = float(value)
     except (TypeError, ValueError):
         return None
-    if (
-        number < 0
-        or number != number
-        or number in (float("inf"), float("-inf"))
-    ):
+    if number < 0 or number != number or number in (float("inf"), float("-inf")):
         return None
     return number
 
