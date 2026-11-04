@@ -78,6 +78,12 @@ be used from Python and the REST API.
 The event-study branch returns rows with `symbol`, `window`, and
 `ar_by_day` fields. A synthetic ZIM/FRO fixture using that shape is provided
 for UI work; the values are illustrative and are not market observations.
+The event-study chart also draws the planned 95% confidence band when each
+full-window row includes `car_var_by_day` (variance, in decimal-squared units)
+or `car_se_by_day` (standard error, in decimals). The array must align with
+`ar_by_day`; use `null` for missing days. The analysis function should compute
+the cumulative CAR variance at each day using its market-model variance method.
+Rows without either field continue to render their CAR paths without a band.
 After installing the optional charting dependencies, render the demo with:
 
 ```bash

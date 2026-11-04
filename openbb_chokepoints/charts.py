@@ -34,7 +34,10 @@ def event_study_chart(
     ``ar_by_day`` follows the event-study result model. Summing abnormal
     returns by day gives the CAR path (MacKinlay, 1997); values are decimals
     and the chart displays percentages. Only the full requested window is
-    plotted when sub-window rows are also present.
+    plotted when sub-window rows are also present. If a row also supplies
+    ``car_var_by_day`` (decimal-squared) or ``car_se_by_day`` (decimal), a
+    pointwise 95% confidence band is drawn. These values are calculated by
+    the analysis layer so the chart does not duplicate its variance method.
     """
     from openbb_charting.core.openbb_figure import OpenBBFigure
 
@@ -67,12 +70,25 @@ def event_study_chart(
             values = row.get("ar_by_day", [])
             cumulative = _cumulative_with_gaps(values)
             days = list(range(start, start + len(values)))
+            bounds = _confidence_bounds(row, len(values))
+            color = _COLORS[index % len(_COLORS)]
+            if bounds is not None:
+                for path in _confidence_band_paths(days, cumulative, bounds):
+                    figure.add_shape(
+                        type="path",
+                        path=path,
+                        xref="x",
+                        yref="y",
+                        fillcolor=_with_alpha(color, 0.18),
+                        line={"color": _with_alpha(color, 0), "width": 0},
+                        layer="below",
+                    )
             figure.add_scatter(
                 x=days,
                 y=[None if value is None else value * 100 for value in cumulative],
                 mode="lines+markers",
                 name=symbol,
-                line={"color": _COLORS[index % len(_COLORS)], "width": 2},
+                line={"color": color, "width": 2},
                 marker={"size": 5},
                 connectgaps=False,
                 customdata=values,
@@ -92,6 +108,12 @@ def event_study_chart(
     title = "Cumulative Abnormal Returns"
     if sample_mode:
         title += " — synthetic sample"
+    has_confidence_band = any(
+        _confidence_bounds(row, len(row.get("ar_by_day", []))) is not None
+        for row in selected.values()
+    )
+    if has_confidence_band:
+        title += " (shaded area: 95% confidence band)"
     figure.update_layout(
         title={"text": title, "x": 0.5},
         template="plotly_dark" if theme == "dark" else "plotly_white",
@@ -148,3 +170,82 @@ def _cumulative_with_gaps(values: Sequence[Any]) -> list[float | None]:
         running += number
         result.append(running)
     return result
+
+
+def _confidence_bounds(
+    row: Mapping[str, Any], length: int
+) -> list[tuple[float, float] | None] | None:
+    """Read pointwise CAR variance or standard error from an output row."""
+    variances = row.get("car_var_by_day")
+    standard_errors = row.get("car_se_by_day")
+    if isinstance(variances, (list, tuple)) and len(variances) == length:
+        result = []
+        for value in variances:
+            number = _finite_nonnegative(value)
+            result.append(None if number is None else 1.96 * number**0.5 * 100)
+        return [(value, value) if value is not None else None for value in result]
+    if isinstance(standard_errors, (list, tuple)) and len(standard_errors) == length:
+        result = []
+        for value in standard_errors:
+            number = _finite_nonnegative(value)
+            result.append(None if number is None else 1.96 * number * 100)
+        return [(value, value) if value is not None else None for value in result]
+    return None
+
+
+def _finite_nonnegative(value: Any) -> float | None:
+    """Return a finite nonnegative number, or None for unusable data."""
+    if value is None:
+        return None
+    try:
+        number = float(value)
+    except (TypeError, ValueError):
+        return None
+    if (
+        number < 0
+        or number != number
+        or number in (float("inf"), float("-inf"))
+    ):
+        return None
+    return number
+
+
+def _confidence_band_paths(
+    days: Sequence[int],
+    cumulative: Sequence[float | None],
+    margins: Sequence[tuple[float, float] | None],
+) -> list[str]:
+    """Build closed polygon paths for contiguous portions of the confidence band."""
+    paths: list[str] = []
+    upper: list[tuple[int, float]] = []
+    lower: list[tuple[int, float]] = []
+
+    def flush() -> None:
+        if not upper:
+            return
+        points = upper + list(reversed(lower))
+        paths.append(
+            " ".join(
+                [f"M {points[0][0]},{points[0][1]:.12g}"]
+                + [f"L {x},{y:.12g}" for x, y in points[1:]]
+                + ["Z"]
+            )
+        )
+        upper.clear()
+        lower.clear()
+
+    for day, value, margin in zip(days, cumulative, margins, strict=True):
+        if value is None or margin is None:
+            flush()
+            continue
+        low_margin, high_margin = margin
+        upper.append((day, value + high_margin))
+        lower.append((day, value - low_margin))
+    flush()
+    return paths
+
+
+def _with_alpha(color: str, alpha: float) -> str:
+    """Convert the chart's hex color to an rgba color."""
+    channels = tuple(int(color[index : index + 2], 16) for index in (1, 3, 5))
+    return f"rgba({channels[0]},{channels[1]},{channels[2]},{alpha})"
