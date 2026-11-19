@@ -1,0 +1,47 @@
+# Proxy mapping for exposure lookup.  UNVERIFIED: run
+#   python scripts/check_proxy_coverage.py   (Yahoo ticker coverage)
+#   python scripts/list_industries.py        (real PortWatch industry names)
+# and fix this file before using it in any result.
+
+# PortWatch industry label -> sector (keys are lower-cased, stripped).
+industry_to_sector:
+  "crude oil": energy
+  "petroleum products": energy
+  "oil": energy
+  "lng": energy
+  "liquefied natural gas": energy
+  "coal": energy
+  "machinery": industrials
+  "machinery and equipment": industrials
+  "vehicles": autos
+  "automotive": autos
+  "electronics": technology
+  "electrical machinery": technology
+  "agricultural products": agriculture
+  "cereals": agriculture
+  "grains": agriculture
+  "chemicals": materials
+  "iron and steel": materials
+  "metals": materials
+  "consumer goods": consumer
+  "textiles and apparel": consumer
+  "containerised goods": consumer
+
+# Sector -> proxy tickers (Yahoo Finance symbols).
+sector_proxies:
+  energy: [XLE, XOM, SHEL.L, TTE.PA]
+  industrials: [XLI, CAT, SIEGY]
+  autos: [TM, VWAGY, F]
+  technology: [XLK, TSM, 005930.KS]
+  agriculture: [DBA, ADM, BG]
+  materials: [XLB, BHP, RIO]
+  consumer: [XLY, WMT, NKE]
+
+# Chokepoint -> transport proxies tied directly to the route.
+chokepoint_proxies:
+  suez_canal: [MAERSK-B.CO, HLAG.DE, ZIM]
+  bab_el_mandeb_strait: [MAERSK-B.CO, HLAG.DE, ZIM]
+  panama_canal: [MATX, ZIM, KEX]
+  strait_of_hormuz: [FRO, STNG, TNK, XLE]
+  malacca_strait: [D05.SI, ZIM]
+  taiwan_strait: [TSM, 2603.TW]

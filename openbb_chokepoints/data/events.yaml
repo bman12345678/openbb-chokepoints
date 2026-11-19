@@ -1,0 +1,227 @@
+# Chokepoint event catalog, v1 (hand-curated).  Owner: Anjaneya.
+#
+# Conventions
+#   news_date   day 0 for Manan's event study: the first day the market could
+#               have known (first credible public report).  Never the physical
+#               onset if that came earlier/later.
+#   start_date  physical onset, when different (optional).
+#   type        disruption | recovery   (kept separate; recoveries are not
+#               scored as detection targets).
+#   sources     >= 2 independent sources, >= 1 "primary" (official notice,
+#               company advisory, agency wire / first-hand report); the rest
+#               "secondary" (trade press, analysis).
+#   confidence  high | medium | low (dating certainty + independence).
+#   overlaps_with  ids of events whose effects overlap in time/place, so the
+#               event study does not double count.
+#   notes       evidence for the date, paraphrased.
+#
+# Dates were checked against the sources listed, but re-verify anything
+# marked `verify: true` before it is used in a published result.
+
+events:
+  - id: suez_ever_given_2021
+    type: disruption
+    name: Ever Given grounds in the Suez Canal
+    category: blockage
+    chokepoint: suez_canal
+    related_chokepoints: [bab_el_mandeb_strait, gibraltar_strait]
+    news_date: 2021-03-23
+    start_date: 2021-03-23
+    end_date: 2021-03-29
+    confidence: high
+    sources:
+      - {name: Lloyd's List, type: secondary, url: "https://lloydslist.maritimeintelligence.informa.com/LL1136229/Suez-Canal-remains-blocked-despite-efforts-to-refloat-grounded-Ever-Given"}
+      - {name: Baird Maritime, type: secondary, url: "https://www.bairdmaritime.com/shipping/boxships/suez-canal-traffic-blocked-by-grounded-containership"}
+      - {name: gCaptain, type: secondary, url: "https://gcaptain.com/grounded-mega-ship-blocking-suez-canal-in-both-directions"}
+      - {name: WJLA / AP, type: primary, url: "https://wjla.com/news/nation-world/massive-cargo-ship-becomes-wedged-blocks-egypts-suez-canal-03-24-2021"}
+    overlaps_with: []
+    notes: >
+      Container ship wedged across the canal on the morning of 23 March 2021;
+      first wire reports that day. Canal blocked in both directions until refloat.
+
+  - id: suez_ever_given_refloat_2021
+    type: recovery
+    name: Ever Given refloated, Suez traffic resumes
+    category: blockage
+    chokepoint: suez_canal
+    related_chokepoints: []
+    news_date: 2021-03-29
+    confidence: high
+    sources:
+      - {name: Maritime Executive, type: secondary, url: "https://maritime-executive.com/article/salvors-refloat-bow-of-the-grounded-boxship-ever-given"}
+      - {name: CNBC Africa (Suez Canal Authority statement), type: primary, url: "https://cnbcafrica.com/2021/suez-canal-says-traffic-in-channel-resumes-after-stranded-ship-refloated"}
+      - {name: PortCalls, type: secondary, url: "https://portcalls.com/suez-canal-shipping-traffic-resumes-after-refloating-of-megaship"}
+    overlaps_with: [suez_ever_given_2021]
+    notes: Ship freed on 29 March 2021; canal authority said traffic resumed the same day.
+
+  - id: panama_transit_cap_2023
+    type: disruption
+    name: Panama Canal drought restrictions begin
+    category: climate
+    chokepoint: panama_canal
+    related_chokepoints: [suez_canal]
+    news_date: 2023-07-25
+    confidence: medium
+    verify: true
+    sources:
+      - {name: gCaptain, type: secondary, url: "https://gcaptain.com/severe-drought-forces-panama-canal-to-restrict-number-of-daily-vessel-transits"}
+      - {name: gCaptain (draft limits), type: secondary, url: "https://gcaptain.com/drought-forces-panama-canal-authority-to-lower-vessel-draft-limits/"}
+      - {name: MercoPress, type: secondary, url: "https://en.mercopress.com/2023/08/29/panama-canal-restrictions-expected-to-last-for-at-least-ten-months-large-containers-to-reroute-to-suez-canal"}
+    overlaps_with: [panama_transit_cut_2023_10]
+    notes: >
+      Canal authority announced reduced daily slots in late July 2023 because
+      of low Gatun Lake levels; a gradual policy, so the volume drop is slow.
+      Confidence medium: no official ACP advisory was fetched, only trade press.
+
+  - id: panama_transit_cut_2023_10
+    type: disruption
+    name: Panama Canal cuts daily transits further
+    category: climate
+    chokepoint: panama_canal
+    related_chokepoints: [suez_canal]
+    news_date: 2023-10-02
+    confidence: medium
+    verify: true
+    sources:
+      - {name: Splash247, type: secondary, url: "https://splash247.com/daily-transit-limit-at-the-panama-canal-to-be-cut-further/"}
+      - {name: Maritime Executive, type: secondary, url: "https://maritime-executive.com/article/panama-canal-further-lowers-transits-impacting-largest-ships"}
+      - {name: gCaptain, type: secondary, url: "https://gcaptain.com/drought-hit-panama-canal-could-further-reduce-daily-transits"}
+    overlaps_with: [panama_transit_cap_2023]
+    notes: Second tightening of daily slots in October 2023. Overlaps the first cap.
+
+  - id: red_sea_galaxy_leader_2023
+    type: disruption
+    name: Houthis seize the Galaxy Leader
+    category: conflict
+    chokepoint: bab_el_mandeb_strait
+    related_chokepoints: [suez_canal]
+    news_date: 2023-11-19
+    confidence: high
+    sources:
+      - {name: AP, type: primary, url: "https://apnews.com/article/israel-palestinians-red-sea-ship-yemen-houthis-65b611ff878a411900037e7c9a8ee17b"}
+      - {name: Safety4Sea, type: secondary, url: "https://safety4sea.com/armed-attackers-seize-vehicle-carrier-galaxy-leader-in-red-sea/"}
+      - {name: MEES, type: secondary, url: "https://mees.com/2023/11/24/geopolitical-risk/houthis-seize-israel-linked-vessel/83a51920-8ad0-11ee-81ab-2565c06fc40c"}
+    overlaps_with: [red_sea_carrier_pause_2023]
+    notes: Israeli-linked vehicle carrier seized on 19 November 2023; first of the Red Sea campaign.
+
+  - id: red_sea_carrier_pause_2023
+    type: disruption
+    name: Maersk and Hapag-Lloyd pause Red Sea transits
+    category: conflict
+    chokepoint: bab_el_mandeb_strait
+    related_chokepoints: [suez_canal, cape_of_good_hope]
+    news_date: 2023-12-15
+    confidence: high
+    sources:
+      - {name: Crisis24 (carrier notices), type: primary, url: "https://crisis24.garda.com/alerts/2023/12/arabian-peninsula-maersk-and-hapag-lloyd-pause-red-sea-transits-dec-15-due-to-attacks-against-vessels-update-4"}
+      - {name: Kuehne+Nagel, type: primary, url: "https://mykn.kuehne-nagel.com/news/article/maersk-and-hapaglloyd-halt-red-sea-passages-15-Dec-2023"}
+      - {name: Argus, type: secondary, url: "https://www.argusmedia.com/en/news-and-insights/latest-market-news/2519660-maersk-hapag-lloyd-pause-shipments-through-the-red-sea"}
+      - {name: gCaptain, type: secondary, url: "https://gcaptain.com/shipping-giants-pause-red-sea-voyages-dealing-blow-to-global-trade/"}
+    overlaps_with: [red_sea_galaxy_leader_2023, red_sea_maersk_repause_2023]
+    notes: Two of the largest container lines announced a pause on 15 Dec 2023, the start of the large diversion.
+
+  - id: red_sea_maersk_resume_2023
+    type: recovery
+    name: Maersk announces return to the Red Sea
+    category: conflict
+    chokepoint: bab_el_mandeb_strait
+    related_chokepoints: [suez_canal]
+    news_date: 2023-12-24
+    confidence: medium
+    verify: true
+    sources:
+      - {name: Maritime Executive, type: secondary, url: "https://maritime-executive.com/article/maersk-and-hapag-pause-red-sea-runs-as-industry-calls-for-immediate-action"}
+      - {name: Just Style, type: secondary, url: "https://just-style.com/newsletters/maersk-halts-all-red-sea-transits-to-avoid-supply-chain-delays"}
+    overlaps_with: [red_sea_carrier_pause_2023, red_sea_maersk_repause_2023]
+    notes: >
+      Short-lived: reversed within a week. Only two secondary sources are
+      attached here, so this event fails the primary-source rule until an
+      official Maersk advisory is added (see validation warning).
+
+  - id: red_sea_maersk_repause_2023
+    type: disruption
+    name: Maersk halts Red Sea transits again
+    category: conflict
+    chokepoint: bab_el_mandeb_strait
+    related_chokepoints: [suez_canal, cape_of_good_hope]
+    news_date: 2023-12-31
+    confidence: high
+    sources:
+      - {name: gCaptain, type: secondary, url: "https://gcaptain.com/maersk-halts-red-sea-transits-again-after-houthi-missile-and-boat-swarm-attack"}
+      - {name: The Daily Star, type: primary, url: "https://images.thedailystar.net/business/news/maersk-suspends-vessels-passage-through-red-sea-strait-48-hours-3507246"}
+    overlaps_with: [red_sea_carrier_pause_2023, red_sea_maersk_resume_2023]
+    notes: Maersk paused again after a missile and small-boat attack on a Maersk ship on 30-31 Dec 2023.
+
+  - id: red_sea_us_uk_strikes_2024
+    type: disruption
+    name: US and UK strike Houthi targets in Yemen
+    category: conflict
+    chokepoint: bab_el_mandeb_strait
+    related_chokepoints: [suez_canal]
+    news_date: 2024-01-12
+    confidence: medium
+    sources:
+      - {name: USNI News, type: primary, url: "https://news.usni.org/2024/01/11/us-strikes-houthi-targets-in-yemen-from-air-surface-and-subsurface"}
+      - {name: Airforce Technology, type: secondary, url: "https://www.airforce-technology.com/newsletters/us-and-uk-conduct-strikes-against-houthi-drone-and-missile-sites"}
+    overlaps_with: [red_sea_carrier_pause_2023]
+    notes: >
+      Strikes occurred late on 11 Jan (US time), reported 12 Jan in most time
+      zones. An escalation inside an already-depressed series, so a detector
+      is not expected to fire on it separately; confidence medium.
+
+  - id: gaza_ceasefire_2025_01
+    type: recovery
+    name: Gaza ceasefire raises hopes of a Red Sea reopening
+    category: ceasefire
+    chokepoint: bab_el_mandeb_strait
+    related_chokepoints: [suez_canal]
+    news_date: 2025-01-15
+    confidence: medium
+    verify: true
+    sources:
+      - {name: Arab News, type: secondary, url: "https://www.arabnews.pk/middle-east/ceasefire-in-gaza-raises-hopes-of-houthi-pause-in-red-sea-attacks-2618287"}
+      - {name: Kuehne+Nagel (no imminent return), type: primary, url: "https://mykn.kuehne-nagel.com/news/article/no-imminent-return-to-red-sea-for-shipping-de-17-Jan-2025"}
+    overlaps_with: [gaza_ceasefire_phase1_2025_10]
+    notes: >
+      Ceasefire announced mid-January 2025. Carriers did NOT return. Market
+      reaction was small (shipping press reports Maersk shares fell only
+      slightly); the larger Maersk drop in team notes is the Oct 2025 event.
+
+  - id: gaza_ceasefire_phase1_2025_10
+    type: recovery
+    name: Gaza agreement, Maersk shares hit three-month low
+    category: ceasefire
+    chokepoint: bab_el_mandeb_strait
+    related_chokepoints: [suez_canal]
+    news_date: 2025-10-08
+    confidence: medium
+    verify: true
+    sources:
+      - {name: AJOT, type: secondary, url: "https://www.ajot.com/news/maersk-shares-hit-three-month-low-on-prospect-of-gaza-deal-reopening-red-sea-route"}
+      - {name: Baird Maritime, type: secondary, url: "https://www.bairdmaritime.com/shipping/boxships/maersk-shares-fall-to-three-month-low-on-potential-ceasefire-resumption-of-trade-routes"}
+      - {name: L'Orient Le Jour (Reuters), type: primary, url: "https://today.lorientlejour.com/article/1480453/update-1-maersk-shares-hit-three-month-low-on-prospect-of-gaza-deal-reopening-red-sea-route.html"}
+    overlaps_with: [gaza_ceasefire_2025_01]
+    notes: Maersk fell on 8-9 Oct 2025 on the prospect of reopening the route. Check exact day before use.
+
+  - id: hormuz_closure_2026_03
+    type: disruption
+    name: Iran declares the Strait of Hormuz closed
+    category: conflict
+    chokepoint: strait_of_hormuz
+    related_chokepoints: [bab_el_mandeb_strait, suez_canal]
+    news_date: 2026-03-02
+    start_date: 2026-02-28
+    confidence: high
+    sources:
+      - {name: MercoPress, type: primary, url: "https://en.mercopress.com/2026/03/02/revolutionary-guard-say-strait-of-hormuz-is-closed"}
+      - {name: Al-Monitor, type: secondary, url: "https://www.al-monitor.com/originals/2026/03/iran-vows-attack-any-ship-trying-pass-through-strait-hormuz"}
+      - {name: Maritime Executive, type: secondary, url: "https://maritime-executive.com/article/tanker-traffic-in-hormuz-drops-to-zero-as-p-i-clubs-pull-war-risk-cover"}
+    overlaps_with: []
+    notes: >
+      War began 28 Feb 2026; IRGC statement closing the strait reported 2
+      March. PortWatch's own Hormuz disruption record starts 1 March.
+
+# Candidates, not yet verified, so deliberately NOT loaded:
+#   - Hormuz dual blockade (gCaptain, spring 2026): date and sources to confirm.
+#   - Hormuz transits at lowest level (USNI, 2026-05-01).
+#   - Houthis resume Red Sea attacks (USNI, 2026-07-24).
