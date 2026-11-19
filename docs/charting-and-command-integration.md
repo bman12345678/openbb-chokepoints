@@ -206,3 +206,26 @@ tree. The chart helpers and output models are independent of those modules;
 the corresponding route calls become live when those exact data/core modules
 are merged. The route schemas are kept stable with their agreed column names
 and function signatures so those handoffs do not require chart rewrites.
+
+## Where team branches connect
+
+The product layer owns the stable command paths, request/result models, chart
+helpers, chart adapters, and example entry points. The data and analytics
+branches plug into these exact interfaces:
+
+| Owner's code | Expected module/function | Product-layer caller | Shared contract |
+|---|---|---|---|
+| Data | `data/portwatch.py:get_chokepoint_volume(chokepoints, start, end)` | `router.py:monitor` and `router.py:exposure` | Long-form rows with `date`, `chokepoint`, `vessel_type`, `vessels`, `capacity_tons`; freshness in `DataFrame.attrs`. |
+| Data | `data/portwatch.py:get_chokepoint_info()` | `router.py:exposure` | PortWatch rows with `name`/`chokepoint_code`, `vessel_count_*`, and industry rank fields. |
+| Data | `data/events.py:load_events(...)` | `router.py:events` and `_collect_event_cars` | Event records containing `event_id`, `news_date`, `chokepoint`, `event_type`, `direction`, confidence, and provenance. |
+| Detection | `core/detection.py:robust_z(series, window, smooth)` and `flag(z, tau, k, n)` | `router.py:monitor` | Score and persistence flags aligned to the input date index. |
+| Analytics | `core/stress.py:stress_test(weights, car_matrix)` | `router.py:stress_test` | Mapping with `per_event`, `summary`, and per-holding `contributions`, as described above. |
+| Analytics | `core/optimize.py:min_change(w0, A, L, bounds)` and `min_variance(cov, A, L, bounds)` | `router.py:optimize` | Proposed weights aligned with the input holdings; the route builds the result rows and summary fields. |
+
+To combine the work, merge the data and analytics pull requests into `main`,
+then update `feature/charting-and-wrappers` from that new `main` and resolve
+interfaces in `router.py` only where their actual signatures differ from this
+contract. Keep provider fetching in `data/` and calculations in `core/`; chart
+helpers should continue to receive normalized result rows from the output
+models. Rebuild with `openbb-build`, then run the command examples and verify
+the live charts against the merged provider data before merging the product PR.
