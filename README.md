@@ -5,8 +5,10 @@ Chokepoint Risk Extension for the [OpenBB Platform](https://github.com/OpenBB-fi
 The goal is to link maritime chokepoint disruptions (Suez, Bab el-Mandeb,
 Panama, Hormuz, Malacca, ...) to market reactions. The extension is designed
 to add an `obb.chokepoints` namespace to the OpenBB Python interface and a
-`/api/v1/chokepoints` prefix to the OpenBB REST API. The current `main` branch
-is a scaffold; the namespace gains commands as features are merged.
+`/api/v1/chokepoints` prefix to the OpenBB REST API. The current implementation
+includes a market-model event study and product-facing wrappers for the traffic,
+event, exposure, stress, and optimizer workflows. Provider and analytics
+modules for those workflows are team handoffs and merge independently.
 
 | | |
 |---|---|
@@ -29,8 +31,10 @@ openbb-build                       # regenerates the static `obb` package
 ```
 
 `openbb-build` is required after installing or removing any OpenBB extension.
-Start a new Python process after building. On `main`, no commands have been
-merged yet, so there is not a usable `obb.chokepoints` command to call.
+Start a new Python process after building. The market-model event study is
+available in the current checkout. The traffic and portfolio commands expose
+the planned product schemas and depend on the corresponding PortWatch,
+catalog, detection, stress, and optimizer modules being merged.
 
 For local development with charts, install the optional charting dependencies:
 
@@ -104,6 +108,19 @@ The router extension and charting views use separate Python entry-point
 groups. This keeps charts optional while allowing the same command results to
 be used from Python and the REST API.
 
+## Charts and command integration
+
+The optional charting extension includes views for the traffic monitor, event
+catalog, exposure lookup, event study, portfolio stress test, and optimizer.
+The chart helpers take command result rows and do not fetch data or recompute
+analytics. The full chart inputs, assumptions, output fields, and handoff
+contracts are described in
+[docs/charting-and-command-integration.md](docs/charting-and-command-integration.md).
+
+The event-study chart includes a pointwise 95% band when its result includes
+the cumulative CAR variance by day. Variance is returned by the market-model
+core, so the chart draws the band from the same method used for the CAR test.
+
 ## Sample event-study chart
 
 The event-study branch returns rows with `symbol`, `window`, and
@@ -131,7 +148,7 @@ This writes `sample_event_study.html` in the current directory. Pass
 - Stress test, optimizer, hedging
 - Event catalog, disruption monitor, robust z-score, exposure lookup,
   IMF PortWatch data loaders, caching
-- Charts, OpenBB Workspace widgets, MCP configuration, PyPI release
+- Workspace app layout and end-to-end widget verification, MCP workflow, PyPI release
 
 ## Disclaimer
 

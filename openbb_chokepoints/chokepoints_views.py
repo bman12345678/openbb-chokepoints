@@ -30,3 +30,44 @@ class ChokepointsViews:
         content = json.loads(figure.show(external=True).to_json())
         content["config"] = {"displayModeBar": False}
         return figure, content
+
+    @staticmethod
+    def chokepoints_monitor(**kwargs):
+        """Render traffic history, normal ranges, and flagged observations."""
+        return _render("monitor_chart", kwargs)
+
+    @staticmethod
+    def chokepoints_events(**kwargs):
+        """Render catalog and detected events on a chokepoint timeline."""
+        return _render("events_chart", kwargs)
+
+    @staticmethod
+    def chokepoints_exposure(**kwargs):
+        """Render vessel exposure and ranked industry information."""
+        return _render("exposure_chart", kwargs)
+
+    @staticmethod
+    def chokepoints_stress_test(**kwargs):
+        """Render per-holding and per-event historical stress results."""
+        return _render("stress_test_chart", kwargs)
+
+    @staticmethod
+    def chokepoints_optimize(**kwargs):
+        """Render current and proposed portfolio weights."""
+        return _render("optimize_chart", kwargs)
+
+
+def _render(chart_name, kwargs):
+    """Adapt a chart helper to OpenBB's (figure, JSON content) contract."""
+    import json
+
+    from openbb_chokepoints import charts
+
+    chart = getattr(charts, chart_name)
+    rows = kwargs.get("obbject_item") or []
+    allowed = {"theme", "measure"}
+    args = {key: value for key, value in kwargs.items() if key in allowed}
+    figure = chart(rows, **args)
+    content = json.loads(figure.show(external=True).to_json())
+    content["config"] = {"displayModeBar": False}
+    return figure, content

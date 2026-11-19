@@ -7,6 +7,7 @@ market-model calculations. Charting imports stay lazy so the extra is optional.
 from __future__ import annotations
 
 from collections.abc import Mapping, Sequence
+from statistics import median
 from typing import Any
 
 # Reuse this palette across symbol traces in the event-study view.
@@ -121,24 +122,381 @@ def event_study_chart(
         yaxis_title="Cumulative abnormal return (%)",
         hovermode="x unified",
         legend={"orientation": "h", "yanchor": "bottom", "y": 1.02},
-        margin={"l": 70, "r": 25, "t": 85, "b": 65},
-        annotations=(
-            [
-                {
-                    "text": "Illustrative synthetic data; not market observations.",
-                    "xref": "paper",
-                    "yref": "paper",
-                    "x": 0.5,
-                    "y": -0.2,
-                    "showarrow": False,
-                    "font": {"size": 10},
-                }
-            ]
-            if sample_mode
-            else None
+        margin={"l": 70, "r": 25, "t": 85, "b": 90},
+        annotations=[
+            {
+                "text": (
+                    "Scenario analysis based on past events; not investment advice."
+                ),
+                "xref": "paper",
+                "yref": "paper",
+                "x": 0.5,
+                "y": -0.18,
+                "showarrow": False,
+                "font": {"size": 10},
+            },
+            *(
+                [
+                    {
+                        "text": "Illustrative synthetic data; not market observations.",
+                        "xref": "paper",
+                        "yref": "paper",
+                        "x": 0.5,
+                        "y": -0.25,
+                        "showarrow": False,
+                        "font": {"size": 10},
+                    }
+                ]
+                if sample_mode
+                else []
+            ),
+        ],
+    )
+    return figure
+
+
+def monitor_chart(rows: Sequence[Any], *, theme: str = "dark"):
+    """Plot daily traffic, a normal band, and persistent flagged observations."""
+    import plotly.graph_objects as go
+    from openbb_charting.core.openbb_figure import OpenBBFigure
+
+    records = _records(rows)
+    figure = OpenBBFigure()
+    groups: dict[tuple[str, str], list[dict[str, Any]]] = {}
+    for row in records:
+        key = (str(row.get("chokepoint", "")), str(row.get("vessel_type", "")))
+        groups.setdefault(key, []).append(row)
+    for (chokepoint, vessel_type), group in sorted(groups.items()):
+        group.sort(key=lambda row: str(row.get("as_of", "")))
+        dates = [row.get("as_of") for row in group]
+        values = [_number(row.get("avg_7d")) for row in group]
+        name = f"{chokepoint} · {vessel_type}"
+        figure.add_trace(go.Scatter(x=dates, y=values, mode="lines", name=name))
+        lower = [_number(row.get("normal_low")) for row in group]
+        upper = [_number(row.get("normal_high")) for row in group]
+        if any(value is not None for value in lower + upper):
+            figure.add_trace(
+                go.Scatter(
+                    x=dates,
+                    y=upper,
+                    mode="lines",
+                    line={"width": 0},
+                    showlegend=False,
+                    hoverinfo="skip",
+                )
+            )
+            figure.add_trace(
+                go.Scatter(
+                    x=dates,
+                    y=lower,
+                    mode="lines",
+                    line={"width": 0},
+                    fill="tonexty",
+                    name=f"{name} normal range",
+                    opacity=0.18,
+                )
+            )
+        else:
+            baseline = [_number(row.get("baseline_median")) for row in group]
+            figure.add_trace(
+                go.Scatter(
+                    x=dates,
+                    y=baseline,
+                    mode="lines",
+                    line={"dash": "dot"},
+                    name=f"{name} baseline",
+                )
+            )
+        flagged = [row for row in group if row.get("flagged")]
+        if flagged:
+            figure.add_trace(
+                go.Scatter(
+                    x=[row.get("as_of") for row in flagged],
+                    y=[_number(row.get("avg_7d")) for row in flagged],
+                    mode="markers",
+                    name=f"{name} flagged",
+                    marker={"symbol": "x", "size": 10},
+                )
+            )
+    pulled = _latest(records, "data_pulled_at")
+    through = _latest(records, "data_through")
+    _finish_chart(
+        figure,
+        "Chokepoint Traffic Monitor",
+        "Date",
+        "Vessels per day (7-day average)",
+        theme,
+        subtitle=_date_note(pulled, through),
+    )
+    return figure
+
+
+def events_chart(rows: Sequence[Any], *, theme: str = "dark"):
+    """Show catalog events on a chokepoint timeline; recovery markers are hollow."""
+    import plotly.graph_objects as go
+    from openbb_charting.core.openbb_figure import OpenBBFigure
+
+    records = _records(rows)
+    figure = OpenBBFigure()
+    colors = {
+        "conflict": "#C73E1D",
+        "blockage": "#F18F01",
+        "climate": "#2E86AB",
+        "policy": "#A23B72",
+        "resolution": "#3B8C6E",
+        "detected": "#6F63A6",
+    }
+    for event_type in sorted(
+        {str(row.get("event_type", "unknown")) for row in records}
+    ):
+        group = [
+            row
+            for row in records
+            if str(row.get("event_type", "unknown")) == event_type
+        ]
+        symbols = [
+            "circle-open"
+            if str(row.get("direction", "disruption")) == "recovery"
+            else "circle"
+            for row in group
+        ]
+        figure.add_trace(
+            go.Scatter(
+                x=[row.get("news_date") for row in group],
+                y=[row.get("chokepoint") for row in group],
+                mode="markers",
+                name=event_type,
+                text=[row.get("description", "") for row in group],
+                customdata=[
+                    [row.get("event_id"), row.get("direction"), row.get("confidence")]
+                    for row in group
+                ],
+                marker={
+                    "color": colors.get(event_type, "#6F63A6"),
+                    "symbol": symbols,
+                    "size": 12,
+                },
+                hovertemplate=(
+                    "%{y}<br>%{x|%Y-%m-%d}<br>%{text}<br>"
+                    "%{customdata[0]} · %{customdata[1]} · %{customdata[2]}"
+                    "<extra>%{fullData.name}</extra>"
+                ),
+            )
+        )
+    _finish_chart(
+        figure,
+        "Chokepoint Event Timeline",
+        "News date",
+        "Chokepoint",
+        theme,
+        subtitle=(
+            "Recovery events use hollow markers. "
+            "Scenario analysis based on past events."
         ),
     )
     return figure
+
+
+def exposure_chart(
+    rows: Sequence[Any], *, measure: str = "share_count", theme: str = "dark"
+):
+    """Compare vessel exposure shares and list ranked PortWatch industries."""
+    import plotly.graph_objects as go
+    from openbb_charting.core.openbb_figure import OpenBBFigure
+
+    records = _records(rows)
+    figure = OpenBBFigure()
+    shares = [row for row in records if _number(row.get(measure)) is not None]
+    labels = [f"{row.get('name', '')} · {row.get('chokepoint', '')}" for row in shares]
+    figure.add_trace(
+        go.Bar(
+            x=[_number(row.get(measure)) * 100 for row in shares],
+            y=labels,
+            orientation="h",
+            name="Vessel share (%)",
+        )
+    )
+    ranked = [row for row in records if row.get("rank") is not None]
+    if ranked:
+        lines = [
+            f"{row.get('chokepoint')}: #{row.get('rank')} {row.get('name')}"
+            for row in sorted(
+                ranked, key=lambda r: (str(r.get("chokepoint")), int(r.get("rank", 99)))
+            )
+        ]
+        figure.add_annotation(
+            text="<br>".join(lines),
+            xref="paper",
+            yref="paper",
+            x=1.02,
+            y=1,
+            showarrow=False,
+            xanchor="left",
+            align="left",
+        )
+    _finish_chart(
+        figure,
+        "Chokepoint Exposure",
+        "Share of traffic (%)",
+        "Exposure category",
+        theme,
+        subtitle=(
+            "PortWatch industry ranks, not firm-level shares. "
+            "Scenario analysis based on historical traffic."
+        ),
+    )
+    return figure
+
+
+def stress_test_chart(rows: Sequence[Any], *, theme: str = "dark"):
+    """Show per-holding contributions and the portfolio result for each event."""
+    import plotly.graph_objects as go
+    from openbb_charting.core.openbb_figure import OpenBBFigure
+
+    records = _records(rows)
+    figure = OpenBBFigure()
+    contributions: dict[str, list[float]] = {}
+    for row in records:
+        symbol, value = row.get("symbol"), _number(row.get("contribution"))
+        if symbol and value is not None:
+            contributions.setdefault(str(symbol), []).append(value)
+    if contributions:
+        median_contributions = {
+            symbol: median(values) for symbol, values in contributions.items()
+        }
+        ordered = sorted(median_contributions.items(), key=lambda item: item[1])
+        figure.add_trace(
+            go.Bar(
+                x=[value * 100 for _, value in ordered],
+                y=[symbol for symbol, _ in ordered],
+                orientation="h",
+                name="Median contribution (%)",
+            )
+        )
+    event_rows = []
+    seen_events = set()
+    for row in records:
+        event_id = row.get("event_id")
+        if row.get("portfolio_car") is None or event_id in seen_events:
+            continue
+        event_rows.append(row)
+        seen_events.add(event_id)
+    if event_rows:
+        figure.add_trace(
+            go.Scatter(
+                x=[_number(row.get("portfolio_car")) * 100 for row in event_rows],
+                y=[row.get("event_id") for row in event_rows],
+                mode="markers",
+                name="Historical portfolio CAR (%)",
+                marker={"symbol": "circle", "size": 10},
+            )
+        )
+    median_value = next(
+        (
+            _number(row.get("scenario_median"))
+            for row in records
+            if row.get("scenario_median") is not None
+        ),
+        None,
+    )
+    if median_value is not None:
+        figure.add_vline(
+            x=median_value * 100,
+            line={"dash": "dash", "color": "#F5C16C"},
+            annotation_text=f"Median {median_value:.1%}",
+        )
+    count = next(
+        (row.get("events_used") for row in records if row.get("events_used")), 0
+    )
+    _finish_chart(
+        figure,
+        f"Historical Portfolio Stress Test · {count} events",
+        "Abnormal return / contribution (%)",
+        "Holding or event",
+        theme,
+        subtitle=(
+            "Scenario analysis based on past events; holding contributions "
+            "need not sum to the portfolio median."
+        ),
+    )
+    return figure
+
+
+def optimize_chart(rows: Sequence[Any], *, theme: str = "dark"):
+    """Compare current and proposed weights and report loss/turnover context."""
+    import plotly.graph_objects as go
+    from openbb_charting.core.openbb_figure import OpenBBFigure
+
+    records = _records(rows)
+    figure = OpenBBFigure()
+    labels = [str(row.get("symbol", "")) for row in records]
+    current = [(_number(row.get("current_weight")) or 0) * 100 for row in records]
+    proposed = [(_number(row.get("new_weight")) or 0) * 100 for row in records]
+    figure.add_trace(go.Bar(x=labels, y=current, name="Current weight (%)"))
+    figure.add_trace(go.Bar(x=labels, y=proposed, name="Proposed weight (%)"))
+    first = records[0] if records else {}
+    before, after = _number(first.get("loss_before")), _number(first.get("loss_after"))
+    turnover = _number(first.get("turnover"))
+    detail = []
+    if before is not None and after is not None:
+        detail.append(f"Estimated loss {before:.1%} → {after:.1%}")
+    if turnover is not None:
+        detail.append(f"Turnover {turnover:.1%}")
+    _finish_chart(
+        figure,
+        "Exposure-Limited Portfolio Weights",
+        "Holding",
+        "Portfolio weight (%)",
+        theme,
+        subtitle=" · ".join(detail) or "Scenario analysis based on past events.",
+    )
+    figure.update_layout(barmode="group")
+    return figure
+
+
+def _records(rows: Sequence[Any]) -> list[dict[str, Any]]:
+    return [record for row in rows if (record := _as_record(row))]
+
+
+def _number(value: Any) -> float | None:
+    try:
+        number = float(value)
+    except (TypeError, ValueError):
+        return None
+    return number if number == number and abs(number) != float("inf") else None
+
+
+def _latest(rows: Sequence[Mapping[str, Any]], field: str) -> Any:
+    values = [row.get(field) for row in rows if row.get(field) is not None]
+    return max(values, key=str) if values else None
+
+
+def _date_note(pulled: Any, through: Any) -> str:
+    parts = []
+    if through is not None:
+        parts.append(f"Data through {through}")
+    if pulled is not None:
+        parts.append(f"pulled {pulled}")
+    parts.append("Scenario analysis; not investment advice")
+    return " · ".join(parts)
+
+
+def _finish_chart(
+    figure: Any, title: str, x_title: str, y_title: str, theme: str, *, subtitle: str
+):
+    figure.update_layout(
+        title={"text": f"{title}<br><sup>{subtitle}</sup>", "x": 0.5},
+        template="plotly_dark" if theme == "dark" else "plotly_white",
+        xaxis_title=x_title,
+        yaxis_title=y_title,
+        margin={
+            "l": 100,
+            "r": 240 if title == "Chokepoint Exposure" else 35,
+            "t": 105,
+            "b": 65,
+        },
+        legend={"orientation": "h", "yanchor": "bottom", "y": 1.02},
+    )
 
 
 def _as_record(row: Any) -> dict[str, Any]:
