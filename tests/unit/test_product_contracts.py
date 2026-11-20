@@ -67,6 +67,23 @@ def test_output_models_describe_percent_units_and_scenario_rows():
     )
 
 
+def test_proxy_adapter_reads_teammate_sector_and_route_schema(monkeypatch, tmp_path):
+    data_dir = tmp_path / "data"
+    data_dir.mkdir()
+    (data_dir / "proxies.yaml").write_text(
+        "industry_to_sector:\n  Crude Oil: energy\n"
+        "sector_proxies:\n  energy: [XLE, XOM]\n"
+        "chokepoint_proxies:\n  suez_canal: [ZIM, HLAG.DE]\n",
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(router_module, "__file__", str(tmp_path / "router.py"))
+
+    proxies = router_module._load_proxy_map()
+
+    assert proxies["crudeoil"] == ["XLE", "XOM"]
+    assert proxies["chokepoint:suezcanal"] == ["ZIM", "HLAG.DE"]
+
+
 def test_exposure_wrapper_adapts_portwatch_fields(monkeypatch):
     fake = types.ModuleType("openbb_chokepoints.data.portwatch")
     fake.get_chokepoint_info = lambda: pd.DataFrame(
@@ -121,8 +138,25 @@ def test_monitor_wrapper_adapts_long_portwatch_rows(monkeypatch):
     portwatch = types.ModuleType("openbb_chokepoints.data.portwatch")
     portwatch.get_chokepoint_volume = lambda *args: traffic.copy()
     detection = types.ModuleType("openbb_chokepoints.core.detection")
-    detection.robust_z = lambda series, **kwargs: pd.Series(0.0, index=series.index)
-    detection.flag = lambda scores, **kwargs: pd.Series(False, index=scores.index)
+    detection.DetectionParams = lambda **kwargs: kwargs
+
+    def compute_scores(series, params):
+        smoothed = series.rolling(7, min_periods=4).mean()
+        median = smoothed.rolling(90, min_periods=45).median().shift(7)
+        scale = (median * 0 + 1).where(median.notna())
+        return pd.DataFrame(
+            {
+                "smoothed": smoothed,
+                "baseline_median": median,
+                "baseline_scale": scale,
+                "z": (smoothed - median) / scale,
+                "yoy": smoothed / smoothed.shift(364) - 1,
+                "flag": False,
+            },
+            index=series.index,
+        )
+
+    detection.compute_scores = compute_scores
     monkeypatch.setitem(sys.modules, portwatch.__name__, portwatch)
     monkeypatch.setitem(sys.modules, detection.__name__, detection)
 
@@ -134,16 +168,87 @@ def test_monitor_wrapper_adapts_long_portwatch_rows(monkeypatch):
     assert result.results[-1].data_through.isoformat() == "2024-06-28"
 
 
+def test_events_wrapper_adapts_catalog_schema_and_filters_category(monkeypatch):
+    records = pd.DataFrame(
+        [
+            {
+                "id": "red_sea_conflict",
+                "type": "disruption",
+                "category": "conflict",
+                "name": "Red Sea attacks",
+                "chokepoint": "bab_el_mandeb_strait",
+                "related_chokepoints": ["suez_canal"],
+                "news_date": pd.Timestamp("2023-12-15"),
+                "start_date": pd.NaT,
+                "end_date": pd.NaT,
+                "confidence": "high",
+                "overlaps_with": [],
+            },
+            {
+                "id": "suez_blockage",
+                "type": "disruption",
+                "category": "blockage",
+                "name": "Suez blockage",
+                "chokepoint": "suez_canal",
+                "related_chokepoints": [],
+                "news_date": pd.Timestamp("2021-03-23"),
+                "start_date": pd.NaT,
+                "end_date": pd.NaT,
+                "confidence": "high",
+                "overlaps_with": [],
+            },
+        ]
+    )
+    captured = {}
+    event_module = types.ModuleType("openbb_chokepoints.data.events")
+
+    def load_events(**kwargs):
+        captured.update(kwargs)
+        return records
+
+    event_module.load_events = load_events
+    event_module.load_sources = lambda: pd.DataFrame(
+        [{"event_id": "red_sea_conflict", "url": "https://example.com/event"}]
+    )
+    monkeypatch.setitem(sys.modules, event_module.__name__, event_module)
+
+    result = router_module.events(
+        chokepoint="bab_el_mandeb_strait",
+        event_type="conflict",
+        direction="disruption",
+        source="catalog",
+    )
+
+    assert captured == {
+        "chokepoint": "bab_el_mandeb_strait",
+        "event_type": "disruption",
+        "min_confidence": "low",
+    }
+    assert len(result.results) == 1
+    assert result.results[0].event_id == "red_sea_conflict"
+    assert result.results[0].event_type == "conflict"
+    assert result.results[0].direction == "disruption"
+    assert result.results[0].description == "Red Sea attacks"
+    assert result.results[0].sources == ["https://example.com/event"]
+
+
 def _mock_event_returns(monkeypatch):
     dates = pd.date_range("2023-01-01", periods=500, freq="D")
     returns = pd.DataFrame({"ZIM": 0.001, "SPY": 0.0005}, index=dates)
-    events = [
-        {
-            "event_id": "test_conflict",
-            "news_date": "2023-12-01",
-            "chokepoint": "bab_el_mandeb_strait",
-        }
-    ]
+    events = pd.DataFrame(
+        [
+            {
+                "id": "test_conflict",
+                "type": "disruption",
+                "category": "conflict",
+                "name": "Test conflict",
+                "news_date": "2023-12-01",
+                "chokepoint": "bab_el_mandeb_strait",
+                "confidence": "high",
+                "end_date": None,
+            }
+        ]
+    )
     event_module = types.ModuleType("openbb_chokepoints.data.events")
     event_module.load_events = lambda **kwargs: events
     monkeypatch.setitem(sys.modules, event_module.__name__, event_module)

@@ -61,30 +61,38 @@ The traffic commands use the data-layer function names from the data plan:
 ```python
 get_chokepoint_volume(chokepoints, start, end) -> pandas.DataFrame
 get_chokepoint_info() -> pandas.DataFrame
-load_events(chokepoint=None, event_type=None, direction=None,
-            min_confidence="medium") -> list[Event]
+load_events(path=None, *, event_type=None, chokepoint=None,
+            min_confidence="low") -> pandas.DataFrame
+load_sources(path=None) -> pandas.DataFrame
 ```
 
 The volume frame is long form with `date`, `chokepoint`, `vessel_type`,
 `vessels`, and `capacity_tons`; source metadata is carried in
 `DataFrame.attrs`. Info data uses PortWatch's `vessel_count_*` and
-`industry_top1` through `industry_top3` fields. The event loader returns
-records keyed by `event_id` with `news_date`, `direction`, confidence, sources,
-and overlap links. Missing traffic dates must remain missing values, never
-zero counts.
+`industry_top1` through `industry_top3` fields. The pushed catalog adapter
+returns a DataFrame: `id` is the stable event ID, `type` is `disruption` or
+`recovery`, and `category` is `blockage`, `conflict`, `climate`, `policy`,
+`ceasefire`, or `other`. The command maps these to its public `event_id`,
+`direction`, and `event_type` fields. The adapter's `event_type` filter
+currently filters the catalog's `type`; the command applies the requested
+category filter after loading. `load_sources()` supplies provenance URLs by
+event ID. Missing traffic dates must remain missing values, never zero counts.
 
-The monitor consumes `core.detection.robust_z(series, window, smooth)` and
-`core.detection.flag(z, tau, k, n)`. It calculates the same seven-day average
-for the displayed history and plots the median ± three robust standard scales
-as the normal band. The detection helper owns the score and persistence rule;
-the command owns OpenBB input validation, display rows, and source metadata.
+The monitor consumes `core.detection.compute_scores(series, DetectionParams)`;
+the events command uses `detect(series, DetectionParams)` and its episodes for
+automatically detected events. The monitor maps `smooth_days=7`, the requested
+`baseline_days`, and the requested `tau`. Its normal band is
+`baseline_median ± tau × baseline_scale`. The detection helper owns the score
+and persistence rule; the command owns OpenBB input validation, display rows,
+and source metadata.
 
 The traffic monitor returns dated rows rather than only the latest summary so
 the same result supports a readable history chart and a table filtered to its
-latest observations. The plotted band is `baseline_median ± 3 × scale`, where
-`scale = max(1.4826 × MAD, 0.05 × baseline_median, 1)`. The provider loader
-must preserve missing dates as null values so the rolling calculation and
-chart do not invent zero-traffic closures.
+latest observations. The plotted band is
+`baseline_median ± threshold × baseline_scale`, where the core computes
+`baseline_scale = max(1.4826 × MAD, 0.05 × baseline_median, 1)`. The provider
+loader must preserve missing dates as null values so the rolling calculation
+and chart do not invent zero-traffic closures.
 
 The event-study chart uses the committed `run_event_study` function. Each row
 contains `ar_by_day`; for a full-window row, `car_var_by_day` contains the
@@ -199,13 +207,15 @@ same route contract.
 
 ## Current integration limits
 
-The current checkout includes the market-model event study and its data loader.
-The PortWatch adapter, event catalog, detection core, stress core, and optimizer
-core are team-owned handoffs and are not present in this branch's starting
-tree. The chart helpers and output models are independent of those modules;
-the corresponding route calls become live when those exact data/core modules
-are merged. The route schemas are kept stable with their agreed column names
-and function signatures so those handoffs do not require chart rewrites.
+The feature branch contains the product adapters and market-model event study.
+At the latest remote comparison, Anjaneya's PortWatch, event-catalog, detection,
+and exposure modules were pushed on separate branches, but had not been merged
+into `main` or this checkout. The command wrappers now translate those pushed
+interfaces to the public models. Manan's stress and optimizer core modules were
+not present on the visible remote branches, so those wrappers follow the
+signatures in his implementation plan and remain subject to a contract check
+when his core is pushed. Keep all integration work on this product branch until
+the owners' changes are merged through the project review process.
 
 ## Where team branches connect
 
@@ -217,10 +227,10 @@ branches plug into these exact interfaces:
 |---|---|---|---|
 | Data | `data/portwatch.py:get_chokepoint_volume(chokepoints, start, end)` | `router.py:monitor` and `router.py:exposure` | Long-form rows with `date`, `chokepoint`, `vessel_type`, `vessels`, `capacity_tons`; freshness in `DataFrame.attrs`. |
 | Data | `data/portwatch.py:get_chokepoint_info()` | `router.py:exposure` | PortWatch rows with `name`/`chokepoint_code`, `vessel_count_*`, and industry rank fields. |
-| Data | `data/events.py:load_events(...)` | `router.py:events` and `_collect_event_cars` | Event records containing `event_id`, `news_date`, `chokepoint`, `event_type`, `direction`, confidence, and provenance. |
-| Detection | `core/detection.py:robust_z(series, window, smooth)` and `flag(z, tau, k, n)` | `router.py:monitor` | Score and persistence flags aligned to the input date index. |
+| Data | `data/events.py:load_events(...)` and `load_sources()` | `router.py:events` and `_collect_event_cars` | DataFrame with `id`, `type` (disruption/recovery), `category` (conflict/etc.), `news_date`, `chokepoint`, confidence, and source URLs keyed by ID. The command translates these to its stable output model. |
+| Detection | `core/detection.py:compute_scores(series, params)`, `detect(series, params)` | `router.py:monitor` and `events` | Daily score columns (`smoothed`, `baseline_median`, `baseline_scale`, `z`, `yoy`, `flag`) and episode rows (`onset`, `start`, `end`, etc.). |
 | Analytics | `core/stress.py:stress_test(weights, car_matrix)` | `router.py:stress_test` | Mapping with `per_event`, `summary`, and per-holding `contributions`, as described above. |
-| Analytics | `core/optimize.py:min_change(w0, A, L, bounds)` and `min_variance(cov, A, L, bounds)` | `router.py:optimize` | Proposed weights aligned with the input holdings; the route builds the result rows and summary fields. |
+| Analytics | `core/optimize.py:min_change(w0, A, L, bounds)` and `min_variance(cov, A, L, bounds)` | `router.py:optimize` | Proposed weights aligned with input holdings; `A` is mean asset reactions or a matrix with one row per event; the route builds result rows and summary fields. |
 
 To combine the work, merge the data and analytics pull requests into `main`,
 then update `feature/charting-and-wrappers` from that new `main` and resolve

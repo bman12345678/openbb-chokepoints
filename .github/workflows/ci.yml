@@ -40,3 +40,7 @@ jobs:
           pytest
           --cov=openbb_chokepoints/core
           --cov-report=term-missing
+          --cov-fail-under=85
+
+      - name: Installed extension smoke checks
+        run: pytest tests/integration/test_router.py -m integration -k "not event_study_zim_fro"

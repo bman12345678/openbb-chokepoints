@@ -238,7 +238,10 @@ class ExposureData(Data):
     """Vessel or industry exposure and associated market proxies."""
 
     chokepoint: str = Field(title="Chokepoint", description="PortWatch chokepoint key.")
-    category: str = Field(title="Category", description="vessel_type or industry.")
+    category: str = Field(
+        title="Category",
+        description="Vessel type, PortWatch industry, or chokepoint-linked transport.",
+    )
     name: str = Field(
         title="Name", description="Vessel type or PortWatch industry name."
     )

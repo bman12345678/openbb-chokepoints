@@ -49,7 +49,7 @@ VesselType = Literal[
     "roro",
 ]
 EventType = Literal[
-    "blockage", "conflict", "climate", "policy", "resolution", "detected"
+    "blockage", "conflict", "climate", "policy", "ceasefire", "other", "detected"
 ]
 
 
@@ -214,9 +214,9 @@ def monitor(
     lookback_days: int = 90,
     threshold: float = 3.0,
 ) -> OBBject[list[MonitorData]]:
-    """Rank chokepoints by abnormal ship traffic and return the plotted history."""
+    """Track abnormal ship traffic and return the plotted daily history."""
     try:
-        from openbb_chokepoints.core.detection import flag, robust_z
+        from openbb_chokepoints.core.detection import DetectionParams, compute_scores
         from openbb_chokepoints.data.portwatch import get_chokepoint_volume
     except ImportError as exc:
         raise OpenBBError(
@@ -240,22 +240,18 @@ def monitor(
             continue
         group = group.sort_values("date").set_index("date")
         series = group["vessels"].astype(float)
-        scores = robust_z(series, window=lookback_days, smooth=7)
-        flags = flag(scores, tau=threshold, k=3, n=5)
-        smooth = series.rolling(7, min_periods=6).mean()
-        baseline_source = smooth.shift(7)
-        min_periods = max(60, int(lookback_days * 2 / 3))
-        baseline = baseline_source.rolling(
-            lookback_days, min_periods=min_periods
-        ).median()
-        mad = baseline_source.rolling(lookback_days, min_periods=min_periods).apply(
-            lambda values: np.median(np.abs(values - np.median(values))), raw=True
+        scores = compute_scores(
+            series,
+            DetectionParams(
+                smooth_days=7,
+                baseline_days=lookback_days,
+                min_baseline_obs=max(2, min(45, lookback_days)),
+                tau=threshold,
+            ),
         )
-        scale = np.maximum(1.4826 * mad, np.maximum(0.05 * baseline, 1.0))
-        previous_year = smooth.shift(364)
-        for timestamp in smooth.index:
-            center = baseline.loc[timestamp]
-            current = smooth.loc[timestamp]
+        for timestamp, score in scores.iterrows():
+            center = score["baseline_median"]
+            current = score["smoothed"]
             if pd.isna(current):
                 continue
             rows.append(
@@ -267,29 +263,26 @@ def monitor(
                     "baseline_median": None if pd.isna(center) else float(center),
                     "normal_low": None
                     if pd.isna(center)
-                    else max(0.0, float(center - 3 * scale.loc[timestamp])),
+                    else max(0.0, float(center - threshold * score["baseline_scale"])),
                     "normal_high": None
                     if pd.isna(center)
-                    else float(center + 3 * scale.loc[timestamp]),
-                    "robust_z": None
-                    if pd.isna(scores.loc[timestamp])
-                    else float(scores.loc[timestamp]),
+                    else float(center + threshold * score["baseline_scale"]),
+                    "robust_z": None if pd.isna(score["z"]) else float(score["z"]),
                     "pct_vs_baseline": None
                     if pd.isna(center) or center == 0
                     else float(current / center - 1),
                     "pct_vs_last_year": None
-                    if pd.isna(previous_year.loc[timestamp])
-                    or previous_year.loc[timestamp] == 0
-                    else float(current / previous_year.loc[timestamp] - 1),
-                    "flagged": bool(flags.loc[timestamp]),
+                    if pd.isna(score["yoy"])
+                    else float(score["yoy"]),
+                    "flagged": bool(score["flag"]),
                     "low_traffic": bool(
-                        pd.notna(center) and scale.loc[timestamp] == 1.0
+                        pd.notna(center) and score["baseline_scale"] == 1.0
                     ),
                     "data_pulled_at": pulled_at,
                     "data_through": data_through,
                 }
             )
-    rows.sort(key=lambda row: (row["robust_z"] is None, row["robust_z"] or 0))
+    rows.sort(key=lambda row: (row["chokepoint"], row["vessel_type"], row["as_of"]))
     return OBBject(
         results=[MonitorData.model_validate(row) for row in rows], provider="imf"
     )
@@ -333,24 +326,38 @@ def events(
 ) -> OBBject[list[EventCatalogData]]:
     """List dated catalog events and optionally traffic-detected episodes."""
     try:
-        from openbb_chokepoints.data.events import load_events
+        from openbb_chokepoints.data.events import load_events, load_sources
     except ImportError as exc:
         raise OpenBBError(
             "The event catalog loader is not available in this checkout yet."
         ) from exc
 
-    minimum = "low" if source in {"detected", "both"} else "medium"
-    records = load_events(
-        chokepoint=chokepoint,
-        event_type=event_type,
-        direction=direction,
-        min_confidence=minimum,
-    )
-    rows = [_as_dict(record) for record in records]
-    if source == "catalog":
-        rows = [row for row in rows if row.get("event_type") != "detected"]
-    elif source == "detected":
-        rows = [row for row in rows if row.get("event_type") == "detected"]
+    records = []
+    if source in {"catalog", "both"}:
+        # Anjaneya's catalog uses ``type`` for disruption/recovery and
+        # ``category`` for blockage/conflict/climate/policy/other. The data
+        # adapter currently names its type filter ``event_type``.
+        catalog = load_events(
+            chokepoint=chokepoint,
+            event_type=direction,
+            min_confidence="low",
+        )
+        sources = load_sources()
+        sources_by_event = sources.groupby("event_id")["url"].apply(list).to_dict()
+        records.extend(
+            _catalog_event_row(
+                record,
+                sources=sources_by_event.get(record["id"], []),
+            )
+            for record in catalog.to_dict(orient="records")
+        )
+    if source in {"detected", "both"}:
+        records.extend(_detected_event_rows(chokepoint))
+    rows = records
+    if event_type is not None:
+        rows = [row for row in rows if row.get("event_type") == event_type]
+    if direction is not None:
+        rows = [row for row in rows if row.get("direction") == direction]
     pulled_at = datetime.now(timezone.utc)
     data_through = max(
         (pd.Timestamp(row["news_date"]).date() for row in rows), default=None
@@ -483,11 +490,26 @@ def exposure(
                     "share_count": None,
                     "share_capacity": None,
                     "rank": rank,
-                    "proxy_symbols": proxies.get(str(industry), []),
+                    "proxy_symbols": proxies.get(_canonical_key(industry), []),
                     "data_pulled_at": recent_pull,
                     "data_through": recent_through,
                 }
             )
+    route_proxies = proxies.get(f"chokepoint:{_canonical_key(chokepoint)}", [])
+    if route_proxies:
+        rows.append(
+            {
+                "chokepoint": chokepoint,
+                "category": "transport",
+                "name": "Chokepoint-linked companies",
+                "share_count": None,
+                "share_capacity": None,
+                "rank": None,
+                "proxy_symbols": route_proxies,
+                "data_pulled_at": recent_pull,
+                "data_through": recent_through,
+            }
+        )
     return OBBject(
         results=[ExposureData.model_validate(row) for row in rows], provider="imf"
     )
@@ -690,6 +712,64 @@ def _as_dict(value):
     return dict(value)
 
 
+def _catalog_event_row(record, *, sources=None):
+    """Adapt Anjaneya's catalog schema to the public output-model schema."""
+    end_date = record.get("end_date")
+    if pd.isna(end_date):
+        end_date = None
+    return {
+        "event_id": record["id"],
+        "news_time_utc": record.get("news_time_utc"),
+        "chokepoint": record["chokepoint"],
+        "event_type": record.get("category", "other"),
+        "direction": record["type"],
+        "news_date": record["news_date"],
+        "end_date": end_date,
+        "confidence": record["confidence"],
+        "description": record["name"],
+        "sources": record.get("sources", []) if sources is None else sources,
+        "related_chokepoints": record.get("related_chokepoints", []),
+        "overlaps_with": record.get("overlaps_with", []),
+    }
+
+
+def _detected_event_rows(chokepoint):
+    """Represent detected low-traffic episodes as low-confidence events."""
+    from openbb_chokepoints.core.detection import DetectionParams, detect
+    from openbb_chokepoints.data.portwatch import get_chokepoint_volume
+
+    volume = get_chokepoint_volume(
+        [chokepoint] if chokepoint else None,
+        date(2019, 1, 1),
+        date.today(),
+    )
+    if volume.empty:
+        return []
+    rows = []
+    totals = volume[volume["vessel_type"] == "total"]
+    for name, group in totals.groupby("chokepoint", sort=True):
+        _, episodes = detect(group.set_index("date")["vessels"], DetectionParams())
+        for episode in episodes.to_dict(orient="records"):
+            onset = pd.Timestamp(episode["onset"]).date()
+            end = pd.Timestamp(episode["end"]).date()
+            rows.append(
+                {
+                    "event_id": f"detected_{name}_{onset.isoformat()}",
+                    "chokepoint": name,
+                    "event_type": "detected",
+                    "direction": "disruption",
+                    "news_date": onset,
+                    "end_date": end,
+                    "confidence": "low",
+                    "description": "Traffic drop detected by PortWatch monitor",
+                    "sources": [],
+                    "related_chokepoints": [],
+                    "overlaps_with": [],
+                }
+            )
+    return rows
+
+
 def _canonical_key(value):
     """Compare PortWatch slugs and display labels consistently."""
     return "".join(
@@ -706,6 +786,19 @@ def _load_proxy_map() -> dict[str, list[str]]:
 
     raw = yaml.safe_load(path.read_text(encoding="utf-8")) or {}
     result = {}
+    # Current data branch schema: industry labels map to sectors, then to
+    # public-market proxies; chokepoint proxies are route-linked companies.
+    industry_to_sector = raw.get("industry_to_sector", {})
+    sector_proxies = raw.get("sector_proxies", {})
+    if isinstance(industry_to_sector, dict) and isinstance(sector_proxies, dict):
+        for industry, sector in industry_to_sector.items():
+            result[_canonical_key(industry)] = [
+                str(symbol) for symbol in sector_proxies.get(sector, []) or []
+            ]
+    for name, symbols in (raw.get("chokepoint_proxies", {}) or {}).items():
+        result[f"chokepoint:{_canonical_key(name)}"] = [
+            str(symbol) for symbol in symbols or []
+        ]
     for category in ("vessel_types", "industries", "vessel_type", "industry"):
         values = raw.get(category, {}) if isinstance(raw, dict) else {}
         if isinstance(values, dict):
@@ -749,11 +842,14 @@ def _collect_event_cars(data, *, chokepoint, event_type, direction, window):
 
     catalog = load_events(
         chokepoint=chokepoint,
-        event_type=event_type,
-        direction=direction,
+        event_type=direction,
         min_confidence="medium",
     )
-    events = [_as_dict(item) for item in catalog]
+    events = [
+        _catalog_event_row(record)
+        for record in catalog.to_dict(orient="records")
+        if event_type is None or record.get("category") == event_type
+    ]
     if not events:
         raise OpenBBError("No comparable historical events match this scenario.")
 

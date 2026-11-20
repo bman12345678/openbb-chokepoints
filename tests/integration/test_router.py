@@ -5,12 +5,14 @@ from importlib.metadata import entry_points
 import pytest
 
 
+@pytest.mark.integration
 def test_entry_point_registered():
     eps = entry_points(group="openbb_core_extension")
     ep = next(e for e in eps if e.name == "chokepoints")
     assert ep.value == "openbb_chokepoints.router:router"
 
 
+@pytest.mark.integration
 def test_charting_entry_point_registered():
     """Check the optional chart-view class is registered with OpenBB."""
     eps = entry_points(group="openbb_charting_extension")
@@ -19,6 +21,7 @@ def test_charting_entry_point_registered():
     assert isinstance(ep.load(), type)
 
 
+@pytest.mark.integration
 def test_openbb_data_command_dependencies_load():
     """Check the provider extensions needed by planned commands are installed."""
     from openbb import obb
