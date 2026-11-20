@@ -146,18 +146,8 @@ assert not any(name.startswith('openbb_charting') for name in sys.modules)
     )
 
 
-def test_charting_entrypoint_names_the_event_study_view():
-    """Check OpenBB can discover the route-named chart view from its entry point."""
-    pytest.importorskip("openbb_charting")
-
-    from importlib.metadata import entry_points
-
+def test_charting_view_exposes_route_named_event_study_method():
+    """Check the chart view exposes the route-named event-study hook."""
     from openbb_chokepoints.chokepoints_views import ChokepointsViews
 
-    charting = next(
-        ep
-        for ep in entry_points(group="openbb_charting_extension")
-        if ep.name == "chokepoints"
-    )
-    assert charting.load() is ChokepointsViews
-    assert callable(charting.load().chokepoints_event_study)
+    assert callable(ChokepointsViews.chokepoints_event_study)

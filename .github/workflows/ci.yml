@@ -33,6 +33,12 @@ jobs:
       - name: Ruff format
         run: ruff format --check .
 
+      - name: Example command and model checks
+        run: |
+          python examples/run_openbb_command.py --help
+          python examples/run_openbb_command.py firm_exposure --help
+          python examples/show_output_models.py --model FirmExposureData
+
       # Integration tests (network) are deselected by the default
       # `-m 'not integration'` in pyproject.toml.
       - name: Tests
@@ -40,3 +46,7 @@ jobs:
           pytest
           --cov=openbb_chokepoints/core
           --cov-report=term-missing
+          --cov-fail-under=85
+
+      - name: Installed extension smoke checks
+        run: pytest tests/integration/test_router.py -m integration -k "not event_study_zim_fro"

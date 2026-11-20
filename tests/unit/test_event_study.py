@@ -200,6 +200,9 @@ def test_trading_day_offsets_and_ar_by_day():
     assert full["alpha"] == pytest.approx(alpha)
     assert full["beta"] == pytest.approx(beta)
     assert len(full["ar_by_day"]) == 26
+    assert len(full["car_var_by_day"]) == 26
+    assert full["car_var"] == pytest.approx(full["car_var_by_day"][-1])
+    assert all(value is None or value >= 0 for value in full["car_var_by_day"])
     np.testing.assert_allclose(
         full["ar_by_day"], expected_ar.iloc[DAY0_POS - 5 : DAY0_POS + 21]
     )

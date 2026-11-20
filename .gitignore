@@ -17,6 +17,7 @@ dist/
 .coverage.*
 coverage.xml
 htmlcov/
+examples/output/
 
 # Editors and OS
 .vscode/

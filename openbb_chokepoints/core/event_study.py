@@ -257,18 +257,30 @@ def _study_one(
         "ar_by_day": [None if np.isnan(v) else float(v) for v in ar],
     }
 
+    car_var_by_day: list[float | None] = []
+    for end in range(len(ar)):
+        prefix = ar[: end + 1]
+        market_prefix = r_m[: end + 1]
+        if not np.isfinite(prefix).any():
+            car_var_by_day.append(None)
+            continue
+        _, variance, _, _ = car_and_test(prefix, market_prefix, sigma2, XtX_inv)
+        car_var_by_day.append(variance if np.isfinite(variance) else None)
+
     rows = []
     for window in windows:
         sel = (rel_days >= window[0]) & (rel_days <= window[1])
         if not np.isfinite(ar[sel]).any():
             _warn(f"{symbol}: no data in CAR window {format_window(window)}.")
             continue
-        car, _, t, p = car_and_test(ar[sel], r_m[sel], sigma2, XtX_inv)
+        car, variance, t, p = car_and_test(ar[sel], r_m[sel], sigma2, XtX_inv)
         rows.append(
             {
                 **common,
                 "window": format_window(window),
                 "car": car,
+                "car_var": variance,
+                "car_var_by_day": car_var_by_day if window == evt_window else None,
                 "car_t": None if np.isnan(t) else t,
                 "p_value": None if np.isnan(p) else p,
             }

@@ -11,7 +11,7 @@ from __future__ import annotations
 
 import math
 from collections.abc import Sequence
-from datetime import date, timedelta
+from datetime import date, datetime, timedelta, timezone
 
 import pandas as pd
 
@@ -45,6 +45,33 @@ def history_range(
 def get_returns(symbols: Sequence[str], start: date, end: date) -> pd.DataFrame:
     """Simple daily returns, one column per symbol, NaN where a symbol did not trade."""
     return prices_to_returns(fetch_prices(symbols, start, end))
+
+
+def get_covariance(
+    symbols: Sequence[str], lookback_days: int = 252, end: date | None = None
+) -> pd.DataFrame:
+    """Estimate a daily Ledoit-Wolf covariance matrix for optimizer inputs.
+
+    Only dates shared by all symbols are used, so holidays or different
+    exchange calendars never create artificial zero returns.
+    """
+    from sklearn.covariance import LedoitWolf
+
+    end = end or date.today()
+    start = end - timedelta(days=math.ceil(lookback_days * _CALENDAR_PER_TRADING_DAY))
+    returns = get_returns(symbols, start, end).dropna(how="any")
+    if len(returns) < max(20, len(symbols) + 2):
+        raise ValueError(
+            f"Only {len(returns)} overlapping return observations are available "
+            f"for {len(symbols)} symbols; check the symbols and date coverage."
+        )
+    estimator = LedoitWolf().fit(returns.to_numpy(dtype=float))
+    covariance = pd.DataFrame(
+        estimator.covariance_, index=returns.columns, columns=returns.columns
+    )
+    covariance.attrs["data_pulled_at"] = datetime.now(timezone.utc)
+    covariance.attrs["data_through"] = returns.index.max().date()
+    return covariance
 
 
 def fetch_prices(symbols: Sequence[str], start: date, end: date) -> pd.DataFrame:

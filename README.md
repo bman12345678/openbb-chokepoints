@@ -5,8 +5,10 @@ Chokepoint Risk Extension for the [OpenBB Platform](https://github.com/OpenBB-fi
 The goal is to link maritime chokepoint disruptions (Suez, Bab el-Mandeb,
 Panama, Hormuz, Malacca, ...) to market reactions. The extension is designed
 to add an `obb.chokepoints` namespace to the OpenBB Python interface and a
-`/api/v1/chokepoints` prefix to the OpenBB REST API. The current `main` branch
-is a scaffold; the namespace gains commands as features are merged.
+`/api/v1/chokepoints` prefix to the OpenBB REST API. The current implementation
+includes a market-model event study and product-facing wrappers for traffic,
+event, exposure, firm-exposure, stress, and optimizer workflows. Provider and
+analytics modules merge independently through their own branches and reviews.
 
 | | |
 |---|---|
@@ -29,8 +31,12 @@ openbb-build                       # regenerates the static `obb` package
 ```
 
 `openbb-build` is required after installing or removing any OpenBB extension.
-Start a new Python process after building. On `main`, no commands have been
-merged yet, so there is not a usable `obb.chokepoints` command to call.
+Start a new Python process after building. The market-model event study is
+available in the current checkout. The PortWatch, catalog, detection, and
+exposure modules have been pushed on separate branches, but are not yet part
+of this product branch. The traffic, event, exposure, and firm-exposure
+commands depend on those modules; stress and optimizer also depend on Manan's
+analytics core being pushed and merged.
 
 For local development with charts, install the optional charting dependencies:
 
@@ -104,25 +110,76 @@ The router extension and charting views use separate Python entry-point
 groups. This keeps charts optional while allowing the same command results to
 be used from Python and the REST API.
 
-## Sample event-study chart
+## Charts and command integration
 
-The event-study branch returns rows with `symbol`, `window`, and
-`ar_by_day` fields. A synthetic ZIM/FRO fixture using that shape is provided
-for UI work; the values are illustrative and are not market observations.
-The event-study chart also draws the planned 95% confidence band when each
-full-window row includes `car_var_by_day` (variance, in decimal-squared units)
-or `car_se_by_day` (standard error, in decimals). The array must align with
-`ar_by_day`; use `null` for missing days. The analysis function should compute
-the cumulative CAR variance at each day using its market-model variance method.
-Rows without either field continue to render their CAR paths without a band.
-After installing the optional charting dependencies, render the demo with:
+The optional charting extension includes views for the traffic monitor, event
+catalog, exposure lookup, event study, portfolio stress test, and optimizer.
+The chart helpers take command result rows and do not fetch data or recompute
+analytics. The full chart inputs, assumptions, output fields, and handoff
+contracts are described in
+[docs/charting-and-command-integration.md](docs/charting-and-command-integration.md).
+
+The event-study chart includes a pointwise 95% band when its result includes
+the cumulative CAR variance by day. Variance is returned by the market-model
+core, so the chart draws the band from the same method used for the CAR test.
+
+## Runnable examples
+
+Install the development and charting dependencies and build the OpenBB command
+interface first:
 
 ```bash
-python examples/show_sample_event_study.py
+pip install -e ".[dev,charting]"
+openbb-build
 ```
 
-This writes `sample_event_study.html` in the current directory. Pass
-`--output /path/to/file.html` to choose another location.
+Start a fresh Python process after `openbb-build`. Each chart preview uses
+synthetic data and writes an HTML file under `examples/output/` by default;
+pass `--output /path/to/chart.html` to choose another location.
+
+```bash
+python examples/show_monitor_chart.py
+python examples/show_events_chart.py
+python examples/show_exposure_chart.py
+python examples/show_sample_event_study.py
+python examples/show_stress_test_chart.py
+python examples/show_optimize_chart.py
+```
+
+These previews call the chart functions directly, so they do not contact any
+provider or require the PortWatch and portfolio analytics handoffs. They are
+illustrative only. The event-study fixture includes synthetic cumulative CAR
+variance so its preview displays the confidence band.
+
+To inspect all typed output models, run:
+
+```bash
+python examples/show_output_models.py
+```
+
+Pass `--model` to inspect one model, for example:
+
+```bash
+python examples/show_output_models.py --model MonitorData
+```
+
+To run a real OpenBB command and print its output table, use the command runner,
+for example:
+
+```bash
+python examples/run_openbb_command.py event_study --symbols ZIM,FRO --event-date 2023-12-15 --chart
+python examples/run_openbb_command.py monitor --chokepoint bab_el_mandeb_strait --vessel-type container --chart
+python examples/run_openbb_command.py events --chokepoint bab_el_mandeb_strait --source both --chart
+python examples/run_openbb_command.py exposure --chokepoint suez_canal --chart
+python examples/run_openbb_command.py firm_exposure --symbol ZIM
+python examples/run_openbb_command.py stress_test --portfolio ZIM:0.5,SPY:0.5 --chokepoint bab_el_mandeb_strait --event-type conflict --chart
+python examples/run_openbb_command.py optimize --portfolio ZIM:0.5,SPY:0.5 --chokepoint bab_el_mandeb_strait --event-type conflict --max-scenario-loss 0.03 --chart
+```
+
+The live command runner requires provider access. `monitor`, `events`,
+`exposure`, `firm_exposure`, `stress_test`, and `optimize` also need their
+matching team-owned data or analytics modules merged; the synthetic chart
+previews work before those handoffs are available.
 
 ## Roadmap
 
@@ -131,7 +188,7 @@ This writes `sample_event_study.html` in the current directory. Pass
 - Stress test, optimizer, hedging
 - Event catalog, disruption monitor, robust z-score, exposure lookup,
   IMF PortWatch data loaders, caching
-- Charts, OpenBB Workspace widgets, MCP configuration, PyPI release
+- Workspace app layout and end-to-end widget verification, MCP workflow, PyPI release
 
 ## Disclaimer
 
