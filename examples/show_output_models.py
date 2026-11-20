@@ -16,6 +16,7 @@ from openbb_chokepoints.models import (
     EventCatalogData,
     EventStudyData,
     ExposureData,
+    FirmExposureData,
     MonitorData,
     OptimizeData,
     StressTestData,
@@ -77,6 +78,16 @@ SAMPLES = {
             "share_count": 0.24,
             "share_capacity": 0.42,
             "proxy_symbols": ["XLE"],
+        },
+    ),
+    "FirmExposureData": (
+        FirmExposureData,
+        {
+            "symbol": "ZIM",
+            "chokepoint": "bab_el_mandeb_strait",
+            "relationship": "route",
+            "data_pulled_at": "2026-11-19T12:00:00Z",
+            "data_through": "2026-11-18",
         },
     ),
     "StressTestData": (

@@ -6,9 +6,9 @@ The goal is to link maritime chokepoint disruptions (Suez, Bab el-Mandeb,
 Panama, Hormuz, Malacca, ...) to market reactions. The extension is designed
 to add an `obb.chokepoints` namespace to the OpenBB Python interface and a
 `/api/v1/chokepoints` prefix to the OpenBB REST API. The current implementation
-includes a market-model event study and product-facing wrappers for the traffic,
-event, exposure, stress, and optimizer workflows. Provider and analytics
-modules for those workflows are team handoffs and merge independently.
+includes a market-model event study and product-facing wrappers for traffic,
+event, exposure, firm-exposure, stress, and optimizer workflows. Provider and
+analytics modules merge independently through their own branches and reviews.
 
 | | |
 |---|---|
@@ -32,9 +32,11 @@ openbb-build                       # regenerates the static `obb` package
 
 `openbb-build` is required after installing or removing any OpenBB extension.
 Start a new Python process after building. The market-model event study is
-available in the current checkout. The traffic and portfolio commands expose
-the planned product schemas and depend on the corresponding PortWatch,
-catalog, detection, stress, and optimizer modules being merged.
+available in the current checkout. The PortWatch, catalog, detection, and
+exposure modules have been pushed on separate branches, but are not yet part
+of this product branch. The traffic, event, exposure, and firm-exposure
+commands depend on those modules; stress and optimizer also depend on Manan's
+analytics core being pushed and merged.
 
 For local development with charts, install the optional charting dependencies:
 
@@ -169,14 +171,15 @@ python examples/run_openbb_command.py event_study --symbols ZIM,FRO --event-date
 python examples/run_openbb_command.py monitor --chokepoint bab_el_mandeb_strait --vessel-type container --chart
 python examples/run_openbb_command.py events --chokepoint bab_el_mandeb_strait --source both --chart
 python examples/run_openbb_command.py exposure --chokepoint suez_canal --chart
+python examples/run_openbb_command.py firm_exposure --symbol ZIM
 python examples/run_openbb_command.py stress_test --portfolio ZIM:0.5,SPY:0.5 --chokepoint bab_el_mandeb_strait --event-type conflict --chart
 python examples/run_openbb_command.py optimize --portfolio ZIM:0.5,SPY:0.5 --chokepoint bab_el_mandeb_strait --event-type conflict --max-scenario-loss 0.03 --chart
 ```
 
 The live command runner requires provider access. `monitor`, `events`,
-`exposure`, `stress_test`, and `optimize` also need their matching team-owned
-data or analytics modules merged; the synthetic chart previews work before
-those handoffs are available.
+`exposure`, `firm_exposure`, `stress_test`, and `optimize` also need their
+matching team-owned data or analytics modules merged; the synthetic chart
+previews work before those handoffs are available.
 
 ## Roadmap
 

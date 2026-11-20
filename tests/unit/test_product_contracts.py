@@ -30,6 +30,7 @@ def test_all_planned_command_routes_register_and_have_documentation():
         "/monitor",
         "/events",
         "/exposure",
+        "/firm_exposure",
         "/event_study",
         "/stress_test",
         "/optimize",
@@ -38,6 +39,7 @@ def test_all_planned_command_routes_register_and_have_documentation():
         "monitor",
         "events",
         "exposure",
+        "firm_exposure",
         "event_study",
         "stress_test",
         "optimize",
@@ -82,6 +84,47 @@ def test_proxy_adapter_reads_teammate_sector_and_route_schema(monkeypatch, tmp_p
 
     assert proxies["crudeoil"] == ["XLE", "XOM"]
     assert proxies["chokepoint:suezcanal"] == ["ZIM", "HLAG.DE"]
+
+
+def test_firm_exposure_wraps_route_and_sector_proxy_links(monkeypatch):
+    info = pd.DataFrame([{"chokepoint": "suez_canal", "name": "Suez Canal"}])
+    info.attrs["data_pulled_at"] = "2024-06-01T12:00:00Z"
+    info.attrs["data_through"] = "2024-05-31"
+    portwatch = types.ModuleType("openbb_chokepoints.data.portwatch")
+    portwatch.get_chokepoint_info = lambda: info.copy()
+    core = types.ModuleType("openbb_chokepoints.core.exposure")
+    core.lookup = lambda *args: {
+        "sectors": pd.DataFrame(
+            [{"chokepoint": "suez_canal", "sector": "energy", "score": 0.5}]
+        ),
+        "proxies": pd.DataFrame(
+            [
+                {"ticker": "ZIM", "reason": "route", "sector": None},
+                {"ticker": "XLE", "reason": "sector", "sector": "energy"},
+            ]
+        ),
+    }
+    monkeypatch.setitem(sys.modules, portwatch.__name__, portwatch)
+    monkeypatch.setitem(sys.modules, core.__name__, core)
+    monkeypatch.setattr(
+        router_module,
+        "_load_proxy_config",
+        lambda: {
+            "industry_to_sector": {},
+            "sector_proxies": {},
+            "chokepoint_proxies": {},
+        },
+    )
+
+    result = router_module.firm_exposure("xle")
+
+    assert len(result.results) == 1
+    assert result.results[0].symbol == "XLE"
+    assert result.results[0].chokepoint == "suez_canal"
+    assert result.results[0].relationship == "sector"
+    assert result.results[0].sector == "energy"
+    assert result.results[0].sector_score == pytest.approx(0.5)
+    assert result.results[0].data_through.isoformat() == "2024-05-31"
 
 
 def test_exposure_wrapper_adapts_portwatch_fields(monkeypatch):

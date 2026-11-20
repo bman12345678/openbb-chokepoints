@@ -243,7 +243,8 @@ class ExposureData(Data):
         description="Vessel type, PortWatch industry, or chokepoint-linked transport.",
     )
     name: str = Field(
-        title="Name", description="Vessel type or PortWatch industry name."
+        title="Name",
+        description="Vessel type, PortWatch industry, or mapped transport group.",
     )
     share_count: float | None = Field(
         default=None,
@@ -276,6 +277,39 @@ class ExposureData(Data):
         default=None,
         title="Data Through",
         description="Latest source observation date.",
+    )
+
+
+class FirmExposureData(Data):
+    """Mapped relationship between a market symbol and a chokepoint."""
+
+    symbol: str = Field(title="Symbol", description="Market symbol being searched.")
+    chokepoint: str = Field(title="Chokepoint", description="Related passage key.")
+    relationship: str = Field(
+        title="Relationship",
+        description="Route-linked company or sector proxy relationship.",
+    )
+    sector: str | None = Field(
+        default=None,
+        title="Sector",
+        description="Mapped sector for sector proxy relationships.",
+    )
+    sector_score: float | None = Field(
+        default=None,
+        title="Ordinal Sector Score",
+        description=(
+            "Rank-weighted PortWatch industry score; not a measured share of trade."
+        ),
+    )
+    data_pulled_at: datetime | None = Field(
+        default=None,
+        title="Data Pulled At",
+        description="UTC time the PortWatch and proxy mappings were read.",
+    )
+    data_through: date | None = Field(
+        default=None,
+        title="Data Through",
+        description="Date represented by PortWatch's exposure snapshot.",
     )
 
 

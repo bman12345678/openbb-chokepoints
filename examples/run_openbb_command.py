@@ -65,6 +65,12 @@ def _parser() -> argparse.ArgumentParser:
     )
     exposure.add_argument("--chart", action="store_true")
 
+    firm_exposure = commands.add_parser(
+        "firm_exposure", help="Find mapped route and sector links for a symbol"
+    )
+    firm_exposure.add_argument("--symbol", required=True)
+    firm_exposure.add_argument("--chokepoint")
+
     study = commands.add_parser("event_study", help="Market-model event study")
     study.add_argument("--symbols", default="ZIM,FRO")
     study.add_argument("--event-date", required=True)

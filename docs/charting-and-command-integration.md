@@ -44,6 +44,7 @@ the core owns detection, event-study, stress, and optimization mathematics.
 | `monitor` | Optional chokepoint and vessel type; lookback and threshold | `MonitorData` | Traffic history, robust-normal band, flagged days |
 | `events` | Optional chokepoint, type, direction, and source | `EventCatalogData` | Event timeline by chokepoint |
 | `exposure` | PortWatch chokepoint key | `ExposureData` | Vessel-share bars and ranked industries |
+| `firm_exposure` | Market symbol and optional chokepoint | `FirmExposureData` | Relationship table; no separate chart |
 | `event_study` | Symbols, event date, model windows | `EventStudyData` | CAR paths and optional 95% band |
 | `stress_test` | Portfolio rows and scenario | `StressTestData` | Holding contributions and historical event outcomes |
 | `optimize` | Portfolio rows, scenario, loss limit, objective | `OptimizeData` | Current and proposed weights |
@@ -147,6 +148,14 @@ shares. The chart does not imply that an industry rank is a measured market
 exposure. Proxy symbols remain in the table for users to pass to the event
 study.
 
+### Firm exposure lookup
+
+The firm lookup searches configured route-linked tickers and proxies for the
+top ranked sectors at each chokepoint. It returns the relationship reason,
+sector, and the core's ordinal sector score when applicable. A route-proxy
+match has no numeric score; the sector score is a rank-weighted indicator and
+must not be presented as a measured percentage of company revenue or trade.
+
 ### Event study
 
 The chart sums daily abnormal returns into a cumulative path, plots one line
@@ -227,6 +236,7 @@ branches plug into these exact interfaces:
 |---|---|---|---|
 | Data | `data/portwatch.py:get_chokepoint_volume(chokepoints, start, end)` | `router.py:monitor` and `router.py:exposure` | Long-form rows with `date`, `chokepoint`, `vessel_type`, `vessels`, `capacity_tons`; freshness in `DataFrame.attrs`. |
 | Data | `data/portwatch.py:get_chokepoint_info()` | `router.py:exposure` | PortWatch rows with `name`/`chokepoint_code`, `vessel_count_*`, and industry rank fields. |
+| Exposure | `core/exposure.py:lookup(chokepoint, info, proxies)` | `router.py:firm_exposure` | PortWatch ranks, sector mapping, and proxy lists; the command filters links to the requested symbol and labels route or sector relationships. |
 | Data | `data/events.py:load_events(...)` and `load_sources()` | `router.py:events` and `_collect_event_cars` | DataFrame with `id`, `type` (disruption/recovery), `category` (conflict/etc.), `news_date`, `chokepoint`, confidence, and source URLs keyed by ID. The command translates these to its stable output model. |
 | Detection | `core/detection.py:compute_scores(series, params)`, `detect(series, params)` | `router.py:monitor` and `events` | Daily score columns (`smoothed`, `baseline_median`, `baseline_scale`, `z`, `yoy`, `flag`) and episode rows (`onset`, `start`, `end`, etc.). |
 | Analytics | `core/stress.py:stress_test(weights, car_matrix)` | `router.py:stress_test` | Mapping with `per_event`, `summary`, and per-holding `contributions`, as described above. |

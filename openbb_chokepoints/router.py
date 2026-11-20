@@ -29,6 +29,7 @@ from openbb_chokepoints.models import (
     EventCatalogData,
     EventStudyData,
     ExposureData,
+    FirmExposureData,
     MonitorData,
     OptimizeData,
     OptimizeParameters,
@@ -516,6 +517,93 @@ def exposure(
 
 
 @router.command(
+    methods=["GET"],
+    widget_config={
+        "name": "Firm Exposure",
+        "description": "Find mapped route and sector links for a market symbol.",
+        "category": "Chokepoint Risk",
+        "type": "table",
+    },
+    mcp_config={"name": "firm_exposure", "tags": ["chokepoints"]},
+    examples=[
+        APIEx(parameters={"symbol": "ZIM"}),
+        PythonEx(
+            description="Find the routes and sectors linked to ZIM.",
+            code=[
+                "res = obb.chokepoints.firm_exposure(symbol='ZIM')",
+                "res.to_df()",
+            ],
+        ),
+    ],
+)
+def firm_exposure(
+    symbol: str, chokepoint: str | None = None
+) -> OBBject[list[FirmExposureData]]:
+    """Find configured chokepoint and sector-proxy links for a market symbol."""
+    try:
+        from openbb_chokepoints.core.exposure import lookup
+        from openbb_chokepoints.data.portwatch import get_chokepoint_info
+    except ImportError as exc:
+        raise OpenBBError(
+            "Firm exposure needs the PortWatch adapter and exposure core."
+        ) from exc
+
+    ticker = symbol.strip().upper()
+    if not ticker:
+        raise OpenBBError("Provide a non-empty market symbol.")
+    info = get_chokepoint_info()
+    if "chokepoint" not in info:
+        if "name" not in info:
+            raise OpenBBError("PortWatch exposure data has no chokepoint key.")
+        info = info.assign(chokepoint=info["name"].map(_canonical_key))
+    proxy_config = _load_proxy_config()
+    if not {"industry_to_sector", "sector_proxies", "chokepoint_proxies"} <= set(
+        proxy_config
+    ):
+        raise OpenBBError("The PortWatch proxy mapping is missing or incomplete.")
+    data_pulled_at = info.attrs.get("data_pulled_at")
+    data_through = info.attrs.get("data_through")
+    rows = []
+    names = info["chokepoint"].astype(str).drop_duplicates().tolist()
+    if chokepoint:
+        names = [
+            name for name in names if _canonical_key(name) == _canonical_key(chokepoint)
+        ]
+    for name in names:
+        card = lookup(name, info, proxy_config)
+        sectors = card["sectors"]
+        sector_scores = (
+            sectors.set_index("sector")["score"].to_dict()
+            if isinstance(sectors, pd.DataFrame) and not sectors.empty
+            else {}
+        )
+        proxies = card["proxies"]
+        for match in proxies[
+            proxies["ticker"].astype(str).str.upper() == ticker
+        ].to_dict(orient="records"):
+            sector = match.get("sector")
+            rows.append(
+                {
+                    "symbol": ticker,
+                    "chokepoint": name,
+                    "relationship": match["reason"],
+                    "sector": sector,
+                    "sector_score": sector_scores.get(sector),
+                    "data_pulled_at": data_pulled_at,
+                    "data_through": data_through,
+                }
+            )
+    if not rows:
+        scope = f" at '{chokepoint}'" if chokepoint else ""
+        raise OpenBBError(
+            f"No configured chokepoint or sector proxy link for {ticker}{scope}."
+        )
+    return OBBject(
+        results=[FirmExposureData.model_validate(row) for row in rows], provider="imf"
+    )
+
+
+@router.command(
     methods=["POST"],
     widget_config={
         "name": "Portfolio Stress Test",
@@ -779,12 +867,9 @@ def _canonical_key(value):
 
 def _load_proxy_map() -> dict[str, list[str]]:
     """Read optional vessel/industry proxy mappings from the data package."""
-    path = Path(__file__).parent / "data" / "proxies.yaml"
-    if not path.exists():
+    raw = _load_proxy_config()
+    if not raw:
         return {}
-    import yaml
-
-    raw = yaml.safe_load(path.read_text(encoding="utf-8")) or {}
     result = {}
     # Current data branch schema: industry labels map to sectors, then to
     # public-market proxies; chokepoint proxies are route-linked companies.
@@ -806,15 +891,32 @@ def _load_proxy_map() -> dict[str, list[str]]:
                 if isinstance(symbols, dict):
                     symbols = symbols.get("symbols", symbols.get("proxy_symbols", []))
                 result[str(name)] = [str(symbol) for symbol in symbols or []]
-    if isinstance(raw, dict):
-        for name, symbols in raw.items():
-            if name in {"vessel_types", "industries", "vessel_type", "industry"}:
-                continue
-            if isinstance(symbols, dict):
-                symbols = symbols.get("symbols", symbols.get("proxy_symbols", []))
-            if isinstance(symbols, list):
-                result.setdefault(str(name), [str(symbol) for symbol in symbols])
+    for name, symbols in raw.items():
+        if name in {
+            "industry_to_sector",
+            "sector_proxies",
+            "chokepoint_proxies",
+            "vessel_types",
+            "industries",
+            "vessel_type",
+            "industry",
+        }:
+            continue
+        if isinstance(symbols, dict):
+            symbols = symbols.get("symbols", symbols.get("proxy_symbols", []))
+        if isinstance(symbols, list):
+            result.setdefault(str(name), [str(symbol) for symbol in symbols])
     return result
+
+
+def _load_proxy_config() -> dict:
+    """Read the raw proxy map in the schema consumed by core.exposure.lookup."""
+    path = Path(__file__).parent / "data" / "proxies.yaml"
+    if not path.exists():
+        return {}
+    import yaml
+
+    return yaml.safe_load(path.read_text(encoding="utf-8")) or {}
 
 
 def _collect_event_cars(data, *, chokepoint, event_type, direction, window):
